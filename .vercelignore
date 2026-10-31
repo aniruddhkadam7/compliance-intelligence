@@ -1,0 +1,14 @@
+# Never upload client data, secrets or local build/database state to Vercel.
+# Directory rules are anchored with "/" so they don't match app routes such as src/app/(app)/data.
+*.xlsx
+*.xls
+*.csv
+/data/
+.env
+.env.*
+!.env.example
+/.next/
+/.next-build/
+/node_modules/
+/scripts/
+/docs/

@@ -1,0 +1,126 @@
+import { z } from "zod";
+import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { shortName } from "@/lib/frameworks";
+import { ListParams, paging } from "./params";
+
+export const CitationFilters = ListParams.extend({
+  frameworkId: z.string().max(40).optional().default(""),
+  family: z.string().max(80).optional().default(""),
+  version: z.string().max(40).optional().default(""),
+  requirementId: z.string().max(20).optional().default(""),
+  field: z.enum(["all", "sectionId", "sectionName", "text", "requirement"]).optional().default("all"),
+  mapped: z.enum(["", "yes", "no"]).optional().default(""),
+});
+export type CitationFilters = z.infer<typeof CitationFilters>;
+
+const SORTS: Record<string, Prisma.CitationOrderByWithRelationInput> = {
+  sectionId: { sourceSectionId: "asc" },
+  sectionName: { sectionName: "asc" },
+  framework: { framework: { name: "asc" } },
+};
+
+export async function listCitations(f: CitationFilters) {
+  const q = f.q;
+  const textMatch: Prisma.CitationWhereInput[] = [];
+  if (q) {
+    if (f.field === "all" || f.field === "sectionId") textMatch.push({ sourceSectionId: { startsWith: q } });
+    if (f.field === "all" || f.field === "sectionName") textMatch.push({ sectionName: { contains: q, mode: "insensitive" } });
+    if (f.field === "text") textMatch.push({ sectionText: { contains: q, mode: "insensitive" } });
+    if (f.field === "all" || f.field === "requirement")
+      textMatch.push({ requirements: { some: { requirement: { OR: [{ requirementId: q }, { name: { contains: q, mode: "insensitive" } }] } } } });
+  }
+  const where: Prisma.CitationWhereInput = {
+    ...(f.frameworkId && { frameworkId: f.frameworkId }),
+    ...((f.family || f.version) && { framework: { ...(f.family && { family: f.family }), ...(f.version && { versionLabel: f.version }) } }),
+    ...(f.requirementId && { requirements: { some: { requirement: { requirementId: f.requirementId } } } }),
+    ...(f.mapped === "yes" && { requirements: { some: { requirement: { mappings: { some: { authoritative: true } } } } } }),
+    ...(f.mapped === "no" && { requirements: { every: { requirement: { mappings: { none: { authoritative: true } } } } } }),
+    ...(textMatch.length && { OR: textMatch }),
+  };
+  const base = f.sort && SORTS[f.sort] ? SORTS[f.sort] : { sourceSectionId: "asc" as const };
+  const orderBy = Object.fromEntries(
+    Object.entries(base).map(([k, v]) => [k, typeof v === "string" ? f.dir : { name: f.dir }]),
+  ) as Prisma.CitationOrderByWithRelationInput;
+
+  const [items, total] = await Promise.all([
+    prisma.citation.findMany({
+      where, orderBy, ...paging(f),
+      select: {
+        id: true, sourceSectionId: true, sectionName: true,
+        framework: { select: { id: true, name: true, versionLabel: true, sourceId: true } },
+        requirements: {
+          select: {
+            requirement: {
+              select: {
+                requirementId: true, name: true,
+                _count: { select: { mappings: { where: { authoritative: true } } } },
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.citation.count({ where }),
+  ]);
+  return {
+    items: items.map((c) => ({
+      id: c.id,
+      sourceSectionId: c.sourceSectionId,
+      sectionName: c.sectionName,
+      sectionLabel: sectionLabel(c.sectionName),
+      framework: { ...c.framework, short: shortName(c.framework.name) },
+      requirements: c.requirements.map((r) => ({ requirementId: r.requirement.requirementId, name: r.requirement.name, controls: r.requirement._count.mappings })),
+    })),
+    total, page: f.page, pageSize: f.pageSize,
+  };
+}
+
+/** Last segment of a hierarchical section name, e.g. "DE.CM-03". */
+export function sectionLabel(name: string) {
+  const parts = name.split(" - ");
+  return parts.length > 1 ? parts[parts.length - 1] : name;
+}
+
+export async function getCitation(id: string) {
+  const c = await prisma.citation.findFirst({
+    where: { OR: [{ id }, { sourceSectionId: id }] },
+    include: {
+      framework: true,
+      requirements: {
+        include: {
+          requirement: {
+            include: {
+              mappings: {
+                where: { authoritative: true },
+                include: { control: { select: { id: true, controlName: true, title: true, category: true } } },
+              },
+              _count: { select: { citations: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!c) return null;
+  return {
+    ...c,
+    sectionPath: c.sectionName.split(" - "),
+    framework: { ...c.framework, short: shortName(c.framework.name) },
+  };
+}
+
+export async function citationFacets() {
+  const fws = await prisma.framework.findMany({ select: { id: true, name: true, family: true, versionLabel: true, _count: { select: { citations: true } } }, orderBy: { name: "asc" } });
+  const families = new Map<string, { family: string; versions: { id: string; version: string | null }[] }>();
+  for (const f of fws) {
+    if (!f.family) continue;
+    const e = families.get(f.family) ?? { family: f.family, versions: [] };
+    e.versions.push({ id: f.id, version: f.versionLabel });
+    families.set(f.family, e);
+  }
+  return {
+    frameworks: fws.map((f) => ({ id: f.id, name: f.name, short: shortName(f.name), citations: f._count.citations, family: f.family, version: f.versionLabel })),
+    families: [...families.values()].filter((f) => f.versions.length > 1),
+  };
+}

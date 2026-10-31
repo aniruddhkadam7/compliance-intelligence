@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens — light (default) */
+:root {
+  --bg: #f6f6fa;
+  --surface: #ffffff;
+  --surface-2: #fafafc;
+  --surface-3: #f0f0f4;
+  --border: #e1e1e6;
+  --border-strong: #c4c4cd;
+  --fg: #2e2e38;
+  --fg-2: #3f3f4b;
+  --muted: #686874;
+  --subtle: #8f8f9b;
+  --accent: #2e2e38;
+  --accent-hover: #1a1a24;
+  --accent-soft: #fff8c2;
+  --accent-fg: #ffffff;
+  --info: #2457c5;
+  --info-soft: #eaf0fc;
+  --success: #1f7a4d;
+  --success-soft: #e8f5ee;
+  --warning: #a35f00;
+  --warning-soft: #fdf3e2;
+  --danger: #b4232f;
+  --danger-soft: #fcebec;
+  --ring: rgba(46, 46, 56, 0.35);
+  --shadow-sm: 0 1px 2px rgba(26, 26, 36, 0.05);
+  --shadow-md: 0 4px 12px -2px rgba(26, 26, 36, 0.08), 0 1px 3px rgba(26, 26, 36, 0.06);
+  --shadow-lg: 0 16px 40px -8px rgba(26, 26, 36, 0.18);
+
+  /* Chart series (validated for contrast on both themes) */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  --chart-muted: #c4c4cd;
+}
+
+.dark {
+  --bg: #1a1a24;
+  --surface: #23232f;
+  --surface-2: #282835;
+  --surface-3: #2e2e3c;
+  --border: #363645;
+  --border-strong: #4a4a5c;
+  --fg: #f6f6fa;
+  --fg-2: #c4c4cd;
+  --muted: #9a9aa6;
+  --subtle: #747480;
+  --accent: #ffe600;
+  --accent-hover: #fff066;
+  --accent-soft: #3a3720;
+  --accent-fg: #1a1a24;
+  --info: #6f9cf5;
+  --info-soft: #14244a;
+  --success: #4cc38a;
+  --success-soft: #0f2e22;
+  --warning: #f0b453;
+  --warning-soft: #33250c;
+  --danger: #f2727d;
+  --danger-soft: #3a1418;
+  --ring: rgba(255, 230, 0, 0.45);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 14px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 18px 44px -8px rgba(0, 0, 0, 0.6);
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-muted: #4a4a5c;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-jb), ui-monospace, "SFMono-Regular", monospace;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-xs: var(--shadow-sm);
+  --shadow-card: var(--shadow-md);
+  --shadow-pop: var(--shadow-lg);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-feature-settings: "cv11", "ss01", "tnum";
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: #ffe600;
+    color: #2e2e38;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
+/* React Flow theming */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--border-strong);
+  --xy-node-border-radius: 6px;
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-button-color: var(--fg-2);
+  --xy-controls-button-background-color-hover: var(--surface-3);
+}
+.react-flow__attribution {
+  display: none;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

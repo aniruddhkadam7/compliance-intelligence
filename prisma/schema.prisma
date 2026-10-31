@@ -1,0 +1,402 @@
+// Compliance Intelligence Platform — data model.
+// Shaped by inspection of "CCF Demonstration.xlsx" (see docs/DATA_DICTIONARY.md).
+// Every workbook-derived row keeps `raw` (original headers -> original cell values)
+// and `sourceSheet`/`sourceRow` for traceability.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Reference data (from workbook)
+// ---------------------------------------------------------------------------
+
+/// One row of "ArC Parent Sources (Metadata)". ArC calls these "authoritative sources".
+model Framework {
+  id               String   @id @default(cuid())
+  sourceId         String   @unique /// "Source ID"
+  name             String /// "Source Name"
+  description      String? /// "Description"
+  group            String? /// "Group"
+  type             String? /// "Type"
+  jurisdiction     String? /// "Jurisdiction"
+  licensing        String? /// "Licensing"
+  documentUrl      String? /// "Document URL"
+  prioritizedByGsk Boolean  @default(false) /// "Prioritized by GSK?"
+  /// Version label parsed from the source name (derived, may be null).
+  versionLabel     String?
+  /// Framework family parsed from the source name (derived, used to group versions).
+  family           String?
+  raw              Json
+  sourceSheet      String
+  sourceRow        Int
+  importJobId      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  citations  Citation[]
+  connectors Connector[]
+
+  @@index([family])
+}
+
+/// One row of "ArC Citations to Sources (Meta)": a section of an authoritative source.
+model Citation {
+  id              String   @id @default(cuid())
+  sourceSectionId String   @unique /// "Source Section ID"
+  frameworkId     String
+  authSource      String /// "Auth. Source" as written in the citation sheet
+  sectionName     String /// "Source Section Name"
+  /// Unlabelled 6th column of the citation sheet: full section text.
+  sectionText     String?
+  raw             Json
+  sourceSheet     String
+  sourceRow       Int
+  importJobId     String?
+  createdAt       DateTime @default(now())
+
+  framework    Framework             @relation(fields: [frameworkId], references: [id], onDelete: Cascade)
+  requirements RequirementCitation[]
+
+  @@index([frameworkId])
+  @@index([sectionName])
+}
+
+/// One row of "ArC Full IR Ref (Metadata)" — an ArC Integrated Requirement (IR).
+model IntegratedRequirement {
+  id                      String   @id @default(cuid())
+  requirementId           String   @unique /// "Requirement ID"
+  riskTopic               String? /// "Risk Topic"
+  name                    String? /// "Requirement Name"
+  riskStatement           String? /// "Risk statement"
+  foundInPrioritized      Boolean? /// "Found in Prioritized Sources?"
+  /// "Count in CCF v2 Mapping?" exactly as stated by the workbook.
+  statedCcfMappingCount   Int?
+  controlObjective        String? /// "Control objective"
+  class                   String? /// "Class"
+  raw                     Json
+  sourceSheet             String
+  sourceRow               Int
+  importJobId             String?
+  createdAt               DateTime @default(now())
+
+  citations  RequirementCitation[]
+  mappings   ControlRequirementMapping[]
+  reviews    UnmappedRequirementReview[]
+
+  @@index([riskTopic])
+}
+
+/// Citation -> Integrated Requirement link ("Requirement ID" column of the citation sheet).
+model RequirementCitation {
+  id            String @id @default(cuid())
+  citationId    String
+  requirementId String
+
+  citation    Citation              @relation(fields: [citationId], references: [id], onDelete: Cascade)
+  requirement IntegratedRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@unique([citationId, requirementId])
+  @@index([requirementId])
+}
+
+/// One row of "CCFv2 (Metadata)" (authoritative), enriched with crosswalk
+/// columns from the "Metadata(CCFv2)" working sheet.
+model CcfControl {
+  id                        String   @id @default(cuid())
+  controlName               String   @unique /// "New Common Control Name " (e.g. AI-CCF-1)
+  domainPrefix              String /// derived: name without trailing number (e.g. AI-CCF)
+  scope                     String? /// "Scope (GRC/CSO/OT/DCJ)"
+  coverageInIsms            String? /// "Coverage in ISMS Standards"
+  category                  String? /// "Control Categories"
+  subCategory               String? /// "Control Sub Category"
+  title                     String? /// "Common Control Title"
+  objective                 String? /// "Control Objective"
+  activityStatementV1       String? /// "Control Activity Statement (CCFv1.0)"
+  activityStatementV2       String? /// "Control Activity Statement (CCFv2.0)"
+  monitoringStatements      String? /// "Monitoring Statements"
+  technicalType             String? /// "Technical/Non-technical Control"
+  standardsControlMapping   String? /// "Standards Control Mapping\n(CCFv2.0)"
+  productImplementation     String? /// "Product Implementation Guidance"
+  mappedIsmsSubControls     String? /// "Mapped ISMS Standard Sub-Controls"
+  productTeamFacing         String? /// "Product Team Facing? (CCFv2.0)"
+  orgLevel                  String? /// "Org. Level/Product Level\n(Proposed) v2.0"
+  arcActivityStatement      String? /// "ArC Activity Statement"
+  monitoringCriteria        String? /// "Monitoring criteria"
+  toolsDocuments            String? /// "Tools/Documents (CCF V2)"
+  relatedGskStandard        String? /// "Related GSK Standard"
+  gskAssignee               String? /// "GSK Assignee"
+  gskComments               String? /// "GSK Comments"
+  teamComments              String? /// "Team Comments"
+  notes                     String? /// "Notes / Comments / Feedback"
+  arcRiskStatement          String? /// "ArC Mapping\nRisk Statement"
+  arcRiskObjective          String? /// "ArC Mapping\nRisk Objective"
+  /// Review fields only present on the working sheet.
+  gskReviewStatus           String? /// "GSK Ready for Review?" (Metadata(CCFv2))
+  gskApproval               String? /// "GSK Approved OR  To Discuss" (Metadata(CCFv2))
+  raw                       Json /// authoritative sheet row
+  workingRaw                Json? /// matching "Metadata(CCFv2)" row
+  sourceSheet               String
+  sourceRow                 Int
+  importJobId               String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  mappings            ControlRequirementMapping[]
+  testProcedures      TestProcedure[]
+  evidence            EvidenceRequirement[]
+  frameworkReferences ControlFrameworkReference[]
+
+  @@index([domainPrefix])
+  @@index([category])
+}
+
+enum MappingType {
+  PRIMARY /// "ARC Mapping"
+  SECONDARY /// "Secondary ArC Mapping"
+}
+
+/// CCF control -> Integrated Requirement, as stated in a specific sheet.
+/// Values that are not a resolvable Requirement ID are kept with requirementId = null.
+model ControlRequirementMapping {
+  id            String      @id @default(cuid())
+  controlId     String
+  requirementId String?
+  mappingType   MappingType
+  rawValue      String
+  /// True when the row comes from the authoritative "CCFv2 (Metadata)" sheet.
+  authoritative Boolean
+  sourceSheet   String
+  sourceColumn  String
+  createdAt     DateTime    @default(now())
+
+  control     CcfControl             @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  requirement IntegratedRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
+
+  @@index([controlId])
+  @@index([requirementId])
+  @@index([authoritative, mappingType])
+}
+
+model TestProcedure {
+  id           String @id @default(cuid())
+  controlId    String
+  kind         String /// e.g. CCF_V2, CCF_V1, ARC_WITHOUT_CITATIONS, ARC_WITH_CITATIONS
+  text         String
+  sourceSheet  String
+  sourceColumn String
+
+  control CcfControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+
+  @@index([controlId])
+}
+
+model EvidenceRequirement {
+  id           String @id @default(cuid())
+  controlId    String
+  kind         String /// GO_LIVE, CCF_V1, CCF_V1_UPDATED
+  text         String
+  sourceSheet  String
+  sourceColumn String
+
+  control CcfControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+
+  @@index([controlId])
+}
+
+/// Direct standards references stated per control on the working sheet
+/// (columns such as "NIST CSF 1.1", "NIST CSF 2.0", "GDPR"...).
+model ControlFrameworkReference {
+  id           String   @id @default(cuid())
+  controlId    String
+  columnName   String /// original column header
+  referenceRaw String
+  tokens       String[] /// comma-split references, trimmed
+  sourceSheet  String
+
+  control CcfControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+
+  @@index([controlId])
+  @@index([columnName])
+}
+
+/// Rows of the "Unmapped IRs (...)" analysis sheets. These are review analyses,
+/// NOT approved mappings.
+model UnmappedRequirementReview {
+  id            String  @id @default(cuid())
+  requirementId String
+  sheetName     String
+  raw           Json
+  sourceRow     Int
+  importJobId   String?
+
+  requirement IntegratedRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@unique([requirementId, sheetName])
+  @@index([sheetName])
+}
+
+// ---------------------------------------------------------------------------
+// Ingestion
+// ---------------------------------------------------------------------------
+
+enum ImportStatus {
+  PREVIEWED
+  COMPLETED
+  FAILED
+}
+
+model ImportJob {
+  id          String       @id @default(cuid())
+  kind        String /// CCF_WORKBOOK | TRANSITION_WORKBOOK
+  fileName    String
+  fileSize    Int
+  fileHash    String
+  status      ImportStatus
+  sheets      Json /// per-sheet summary (headers, row counts, role)
+  counts      Json? /// records written per entity
+  actor       String
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+
+  issues ImportIssue[]
+}
+
+model ImportIssue {
+  id          String  @id @default(cuid())
+  importJobId String
+  severity    String /// ERROR | WARNING | INFO
+  code        String
+  sheet       String?
+  row         Int?
+  column      String?
+  message     String
+
+  job ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@index([importJobId])
+}
+
+// ---------------------------------------------------------------------------
+// Version impact (transition workbook supplied by the team)
+// ---------------------------------------------------------------------------
+
+model VersionTransition {
+  id                   String   @id @default(cuid())
+  importJobId          String
+  /// When true the row came from a clearly labelled sample file, not GSK data.
+  isSample             Boolean  @default(false)
+  controlName          String?
+  oldFrameworkVersion  String?
+  newFrameworkVersion  String?
+  oldSectionId         String?
+  newSectionId         String?
+  previousFunction     String?
+  newFunction          String?
+  previousCitation     String?
+  updatedCitation      String?
+  existingTestProcedure String?
+  updatedTestProcedure String?
+  existingEvidence     String?
+  additionalEvidence   String?
+  scenario             String? /// as stated in the workbook, if present
+  raw                  Json
+  sourceSheet          String
+  sourceRow            Int
+  createdAt            DateTime @default(now())
+
+  @@index([importJobId])
+}
+
+// ---------------------------------------------------------------------------
+// External update monitoring (independent of the mapping workflow)
+// ---------------------------------------------------------------------------
+
+model Connector {
+  id                String    @id /// stable slug, e.g. nist-csf2-cprt
+  name              String
+  sourceName        String
+  publisher         String
+  mechanism         String /// JSON_DOWNLOAD | SPARQL | HTTP_FINGERPRINT | ...
+  officialUrl       String
+  endpointUrl       String
+  frameworkId       String?
+  pollingMinutes    Int
+  enabled           Boolean   @default(true)
+  currentVersion    String?
+  currentHash       String?
+  lastCheckedAt     DateTime?
+  lastSuccessAt     DateTime?
+  lastStatus        String? /// OK | CHANGED | ERROR
+  lastError         String?
+  state             Json? /// connector-specific baseline (etag, item ids, ...)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  framework Framework?       @relation(fields: [frameworkId], references: [id], onDelete: SetNull)
+  checks    ConnectorCheck[]
+  updates   FrameworkUpdate[]
+}
+
+model ConnectorCheck {
+  id            String   @id @default(cuid())
+  connectorId   String
+  trigger       String /// MANUAL | SCHEDULED
+  status        String /// OK | CHANGED | BASELINE | ERROR
+  httpStatus    Int?
+  durationMs    Int?
+  contentHash   String?
+  detectedVersion String?
+  message       String?
+  details       Json?
+  actor         String?
+  checkedAt     DateTime @default(now())
+
+  connector Connector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+
+  @@index([connectorId, checkedAt])
+}
+
+model FrameworkUpdate {
+  id           String    @id @default(cuid())
+  connectorId  String
+  changeType   String /// VERSION_CHANGE | CONTENT_CHANGE | NEW_PUBLICATION | NEW_INFORMATIVE_REFERENCE
+  title        String
+  summary      String
+  details      Json?
+  previousValue String?
+  newValue     String?
+  reviewStatus String    @default("NEW") /// NEW | ACKNOWLEDGED | DISMISSED
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+  detectedAt   DateTime  @default(now())
+
+  connector Connector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+
+  @@index([reviewStatus])
+  @@index([detectedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actor     String
+  role      String?
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
