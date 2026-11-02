@@ -1,10 +1,11 @@
 import type { PrismaClient } from "@prisma/client";
 
-export const RESET_SCOPES = ["reference", "transitions", "connectors"] as const;
+export const RESET_SCOPES = ["controls", "library", "transitions", "connectors"] as const;
 export type ResetScope = (typeof RESET_SCOPES)[number];
 
 export const RESET_SCOPE_LABELS: Record<ResetScope, string> = {
-  reference: "CCF workbook data",
+  controls: "Client controls and mappings",
+  library: "Authoritative document library",
   transitions: "Version transition rows",
   connectors: "Connector history",
 };
@@ -17,15 +18,21 @@ export async function resetData(db: PrismaClient, scopes: ResetScope[], actor: s
   const counts: Record<string, number> = {};
   await db.$transaction(
     async (tx) => {
-      if (scopes.includes("reference")) {
+      // Client controls: everything uploaded by the client; the document library stays.
+      if (scopes.includes("controls") || scopes.includes("library")) {
+        counts.controlObligations = (await tx.controlObligation.deleteMany()).count;
+        counts.procedureLinks = (await tx.testProcedureObligation.deleteMany()).count;
         counts.reviews = (await tx.unmappedRequirementReview.deleteMany()).count;
         counts.frameworkReferences = (await tx.controlFrameworkReference.deleteMany()).count;
         counts.evidence = (await tx.evidenceRequirement.deleteMany()).count;
         counts.testProcedures = (await tx.testProcedure.deleteMany()).count;
         counts.mappings = (await tx.controlRequirementMapping.deleteMany()).count;
+        counts.controls = (await tx.ccfControl.deleteMany()).count;
+      }
+      // Document library: authoritative documents and their obligations (also removes client mappings above).
+      if (scopes.includes("library")) {
         counts.citationLinks = (await tx.requirementCitation.deleteMany()).count;
         counts.citations = (await tx.citation.deleteMany()).count;
-        counts.controls = (await tx.ccfControl.deleteMany()).count;
         counts.requirements = (await tx.integratedRequirement.deleteMany()).count;
         // Connectors keep running; their framework link is cleared (onDelete: SetNull).
         counts.frameworks = (await tx.framework.deleteMany()).count;

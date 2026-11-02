@@ -81,7 +81,7 @@ export function UpdateCentre() {
           { label: "Connectors", value: items.length, sub: `${items.filter((c) => c.enabled).length} enabled` },
           { label: "Updates to review", value: items.reduce((n, c) => n + c.openUpdates, 0), tone: "warning" },
           { label: "Connector errors", value: errors, tone: errors ? "warning" : "success", sub: errors ? "See status column" : "All healthy" },
-          { label: "Last successful sync", value: <span className="text-[15px]">{formatRelative(lastSync)}</span>, sub: "Scheduled daily at 06:00 UTC (Vercel Cron)" },
+          { label: "Last successful sync", value: <span className="text-[15px]">{formatRelative(lastSync)}</span>, sub: "Sources are monitored automatically" },
         ]}
       />
       <ConnectorTable items={items} loading={connectors.isLoading} error={connectors.error} running={running} canWrite={canWrite} onCheck={(id) => check([id])} onSync={sync} onHistory={(id) => set({ history: id })} />

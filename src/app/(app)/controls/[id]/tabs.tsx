@@ -21,14 +21,14 @@ export function ControlTabs({ control: c }: { control: ControlDetail }) {
       <TabsList className="mb-4">
         <TabsTrigger value="trace"><GitBranch /> Traceability</TabsTrigger>
         <TabsTrigger value="details"><FileText /> Control details</TabsTrigger>
-        <TabsTrigger value="tests"><ClipboardCheck /> Test procedures <Badge className="ml-0.5">{c.testProcedures.length}</Badge></TabsTrigger>
+        <TabsTrigger value="tests"><ClipboardCheck /> Test procedures <Badge className="ml-0.5">{c.testProcedures.filter((t) => !t.kind.startsWith("ARC_")).length}</Badge></TabsTrigger>
         <TabsTrigger value="evidence"><FileCheck2 /> Evidence <Badge className="ml-0.5">{c.evidence.length}</Badge></TabsTrigger>
         <TabsTrigger value="refs"><Link2 /> Framework references <Badge className="ml-0.5">{c.frameworkReferences.length}</Badge></TabsTrigger>
         <TabsTrigger value="source"><Table2 /> Source record</TabsTrigger>
       </TabsList>
       <TabsContent value="trace"><Traceability c={c} initialQuery={s.q} /></TabsContent>
       <TabsContent value="details"><Details c={c} /></TabsContent>
-      <TabsContent value="tests"><TextRecords items={c.testProcedures} labels={TP_KIND_LABELS} empty="No test procedures recorded for this control." /></TabsContent>
+      <TabsContent value="tests"><TextRecords items={c.testProcedures.filter((t) => !t.kind.startsWith("ARC_"))} labels={TP_KIND_LABELS} empty="No test procedures recorded for this control." /></TabsContent>
       <TabsContent value="evidence"><TextRecords items={c.evidence} labels={EVIDENCE_KIND_LABELS} empty="No evidence statements recorded for this control." /></TabsContent>
       <TabsContent value="refs"><References c={c} /></TabsContent>
       <TabsContent value="source"><SourceRecord c={c} /></TabsContent>
@@ -114,7 +114,7 @@ function QualityIndicators({ c }: { c: ControlDetail }) {
   const items: { ok: boolean | null; label: string; detail: string }[] = [
     { ok: c.citationTotal > 0, label: "Control is mapped to obligations", detail: c.citationTotal ? `${c.citationTotal} obligations linked` : "No mapping recorded" },
     { ok: !c.conflict, label: "Workbook sheets agree on the mapping", detail: c.conflict ? "The two control sheets differ" : "Same value on both sheets" },
-    { ok: c.gskReviewStatus ? c.gskReviewStatus === "GSK approved" : null, label: "GSK review status", detail: c.gskReviewStatus ?? "Not stated" },
+    { ok: c.gskReviewStatus ? c.gskReviewStatus === "GSK approved" : null, label: "Review status", detail: c.gskReviewStatus ?? "Not stated" },
     { ok: c.testProcedures.length > 0, label: "Test procedure present", detail: `${c.testProcedures.length} test procedure records` },
     { ok: c.evidence.some((e) => e.kind === "GO_LIVE"), label: "Go-live evidence defined", detail: c.evidence.some((e) => e.kind === "GO_LIVE") ? "Recommended Evidences (Go-live)" : "Column empty" },
   ];
@@ -168,10 +168,10 @@ function Details({ c }: { c: ControlDetail }) {
               { label: "Technical/Non-technical Control", value: c.technicalType },
               { label: "Product Team Facing? (CCFv2.0)", value: c.productTeamFacing },
               { label: "Org. Level/Product Level (Proposed) v2.0", value: c.orgLevel },
-              { label: "Related GSK Standard", value: c.relatedGskStandard },
+              { label: "Related internal standard", value: c.relatedGskStandard },
               { label: "Tools/Documents (CCF V2)", value: c.toolsDocuments },
-              { label: "GSK Assignee", value: c.gskAssignee },
-              { label: "GSK Comments", value: c.gskComments },
+              { label: "Assignee", value: c.gskAssignee },
+              { label: "Reviewer comments", value: c.gskComments },
               { label: "Team Comments", value: c.teamComments },
               { label: "Notes / Comments / Feedback", value: c.notes ? <LongText text={c.notes} lines={4} /> : null },
             ]}

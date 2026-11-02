@@ -56,7 +56,7 @@ export default function LoginPage() {
           <span className="h-8 w-px bg-border" aria-hidden />
           <div>
             <div className="text-[15px] font-semibold tracking-tight">Compliance Intelligence</div>
-            <div className="text-[11px] text-muted">GSK client demonstration</div>
+            <div className="text-[11px] text-muted">Demonstration</div>
           </div>
         </div>
         <div className="rounded-lg border border-border bg-surface p-5 shadow-card">
@@ -66,7 +66,7 @@ export default function LoginPage() {
             <LoginForm />
           </Suspense>
         </div>
-        <p className="mt-4 text-center text-[11px] text-subtle">Prepared by EY for GSK · Prototype · not a certified compliance system</p>
+        <p className="mt-4 text-center text-[11px] text-subtle">Prepared by EY · Prototype · not a certified compliance system</p>
       </div>
     </div>
   );

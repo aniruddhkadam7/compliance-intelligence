@@ -36,7 +36,6 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
                 { label: "Licensing", value: fw.licensing },
                 { label: "Version", value: fw.versionLabel, hint: "Derived from the framework name" },
                 { label: "Publication date", value: <span className="text-subtle">Not in workbook</span> },
-                { label: "Prioritised by GSK", value: fw.prioritizedByGsk ? "Yes" : "No" },
                 { label: "Last updated (import)", value: formatDateTime(fw.updatedAt) },
               ]}
             />
@@ -98,7 +97,6 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
           <>
             {fw.type && <Badge>{fw.type}</Badge>}
             {fw.jurisdiction && <Badge tone="outline">{fw.jurisdiction}</Badge>}
-            {fw.prioritizedByGsk && <Badge tone="success">Prioritised by GSK</Badge>}
             {fw.connectors.length > 0 && <Badge tone="info">Monitored by {fw.connectors.length} connector{fw.connectors.length > 1 ? "s" : ""}</Badge>}
           </>
         }

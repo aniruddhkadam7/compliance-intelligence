@@ -13,15 +13,20 @@ import { useMe } from "@/lib/client/use-me";
 import { cn, formatNumber } from "@/lib/utils";
 
 interface Counts { frameworks: number; citations: number; requirements: number; controls: number; transitions: number; updates: number; checks: number }
-type Scope = "reference" | "transitions" | "connectors";
+type Scope = "controls" | "library" | "transitions" | "connectors";
 
 const plural = (n: number, noun: string) => `${formatNumber(n)} ${noun}${n === 1 ? "" : "s"}`;
 
 const OPTIONS: { scope: Scope; title: string; detail: (c: Counts) => string; note: string }[] = [
   {
-    scope: "reference", title: "Framework and control data",
-    detail: (c) => `${formatNumber(c.frameworks)} frameworks · ${formatNumber(c.citations)} obligations · ${formatNumber(c.controls)} controls, plus their mappings, test procedures, evidence and review sheets`,
-    note: "Pages show empty states until a workbook is imported again.",
+    scope: "controls", title: "Client controls and mappings",
+    detail: (c) => `${plural(c.controls, "control")}, plus their test procedures, evidence and mappings`,
+    note: "The authoritative document library is kept. Control pages stay empty until controls are uploaded again.",
+  },
+  {
+    scope: "library", title: "Authoritative document library",
+    detail: (c) => `${plural(c.frameworks, "document")} · ${formatNumber(c.citations)} obligations (also removes client mappings)`,
+    note: "Only needed to reload the library itself.",
   },
   {
     scope: "connectors", title: "Connector history",

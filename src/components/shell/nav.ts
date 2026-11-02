@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Library, Quote, Network, ShieldCheck, GitCompareArrows, RadioTower, DatabaseZap, type LucideIcon,
+  LayoutDashboard, Library, Quote, Network, ShieldCheck, GitCompareArrows, RadioTower, DatabaseZap, BookOpenText, type LucideIcon,
 } from "lucide-react";
 
 export interface NavItem {
@@ -14,6 +14,7 @@ export const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Repository",
     items: [
+      { href: "/sources", label: "Sources", icon: BookOpenText },
       { href: "/frameworks", label: "Framework Repository", icon: Library },
       { href: "/citations", label: "Obligation Explorer", icon: Quote },
     ],
