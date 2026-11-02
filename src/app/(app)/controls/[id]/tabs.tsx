@@ -7,12 +7,14 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { EmptyState, KeyValue, LongText, Provenance, SectionTitle } from "@/components/common";
-import { GraphLegend, TraceGraph, type TraceEdge, type TraceNode } from "@/components/graph/trace-graph";
+import { GraphLegend, TraceGraph } from "@/components/graph/trace-graph";
+import { Button } from "@/components/ui/button";
+import { buildTrace } from "./trace";
 import { EVIDENCE_KIND_LABELS, mappingLabel, TP_KIND_LABELS } from "@/lib/labels";
 import type { ControlDetail } from "@/lib/queries/controls";
 import { useUrlState } from "@/lib/client/hooks";
 
-export function ControlTabs({ control: c, trace }: { control: ControlDetail; trace: { nodes: TraceNode[]; edges: TraceEdge[] } }) {
+export function ControlTabs({ control: c }: { control: ControlDetail }) {
   const [s, set] = useUrlState({ tab: "trace", q: "" });
   return (
     <Tabs value={s.tab} onValueChange={(v) => set({ tab: v })}>
@@ -24,7 +26,7 @@ export function ControlTabs({ control: c, trace }: { control: ControlDetail; tra
         <TabsTrigger value="refs"><Link2 /> Framework references <Badge className="ml-0.5">{c.frameworkReferences.length}</Badge></TabsTrigger>
         <TabsTrigger value="source"><Table2 /> Source record</TabsTrigger>
       </TabsList>
-      <TabsContent value="trace"><Traceability c={c} trace={trace} initialQuery={s.q} /></TabsContent>
+      <TabsContent value="trace"><Traceability c={c} initialQuery={s.q} /></TabsContent>
       <TabsContent value="details"><Details c={c} /></TabsContent>
       <TabsContent value="tests"><TextRecords items={c.testProcedures} labels={TP_KIND_LABELS} empty="No test procedures recorded for this control." /></TabsContent>
       <TabsContent value="evidence"><TextRecords items={c.evidence} labels={EVIDENCE_KIND_LABELS} empty="No evidence statements recorded for this control." /></TabsContent>
@@ -34,8 +36,13 @@ export function ControlTabs({ control: c, trace }: { control: ControlDetail; tra
   );
 }
 
-function Traceability({ c, trace, initialQuery }: { c: ControlDetail; trace: { nodes: TraceNode[]; edges: TraceEdge[] }; initialQuery: string }) {
+function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: string }) {
   const [q, setQ] = useState(initialQuery);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const trace = useMemo(() => buildTrace(c, expanded), [c, expanded]);
+  const onAction = (action: string) => {
+    if (action.startsWith("expand:")) setExpanded((x) => new Set(x).add(action.slice("expand:".length)));
+  };
   // One row per obligation (an obligation reached by both mappings is listed as primary).
   const rows = useMemo(() => {
     const all = c.trace.flatMap((fw) => fw.citations.map((ct) => ({ ...ct, framework: fw })));
@@ -49,10 +56,16 @@ function Traceability({ c, trace, initialQuery }: { c: ControlDetail; trace: { n
         <Card className="xl:col-span-2">
           <CardHeader
             title="Relationship graph"
-            description={c.trace.length <= 4 ? "Select a node to open it. Up to three obligations are shown per framework; “+N more” lists the rest below." : "Select a node to open it. With many frameworks, obligations are summarised per framework; select a summary to list them below."}
+            description={c.trace.length <= 4 ? "Select a node to open it. Up to three obligations are shown per framework; select “+N more” to expand the rest." : "Select a node to open it. Obligations are summarised per framework; select a summary to expand it."}
           />
           <CardBody className="space-y-3">
-            {trace.nodes.length > 1 ? <TraceGraph nodes={trace.nodes} edges={trace.edges} /> : <EmptyState title="No resolvable mapping" description="This control is not mapped to any regulatory obligation." />}
+            {trace.nodes.length > 1 ? (
+              <>
+                {/* Remount on expand so the view refits to the new graph. */}
+                <TraceGraph key={[...expanded].join(",")} nodes={trace.nodes} edges={trace.edges} onAction={onAction} />
+                {expanded.size > 0 && <Button size="sm" variant="ghost" onClick={() => setExpanded(new Set())}>Collapse all</Button>}
+              </>
+            ) : <EmptyState title="No resolvable mapping" description="This control is not mapped to any regulatory obligation." />}
             <GraphLegend />
           </CardBody>
         </Card>

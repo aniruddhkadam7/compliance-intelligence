@@ -2,48 +2,15 @@ import { notFound } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { Page, PageHeader, StatStrip } from "@/components/common";
 import { Badge } from "@/components/ui/badge";
-import type { TraceEdge, TraceNode } from "@/components/graph/trace-graph";
-import { getControl, type ControlDetail } from "@/lib/queries/controls";
+import { getControl } from "@/lib/queries/controls";
 import { ControlTabs } from "./tabs";
 
 export const dynamic = "force-dynamic";
-
-/** Framework → Obligation → Control, from authoritative mappings only. */
-function buildTrace(c: ControlDetail) {
-  // Individual obligation nodes only when the trace is small; otherwise one summary node per framework.
-  const PER_FRAMEWORK = c.trace.length <= 4 ? 3 : 0;
-  const control = `k:${c.id}`;
-  const nodes: TraceNode[] = [{ id: control, kind: "control", label: c.controlName, sublabel: c.title ?? undefined, emphasis: true }];
-  const edges: TraceEdge[] = [];
-  const seen = new Set<string>();
-  const add = (n: TraceNode) => { if (!seen.has(n.id)) { seen.add(n.id); nodes.push(n); } };
-
-  for (const fw of c.trace) {
-    // One entry per obligation; secondary only when the obligation is reached solely by a secondary mapping.
-    const obligations = [...new Map(fw.citations.sort((x, y) => (x.mappingType === "PRIMARY" ? -1 : 1) - (y.mappingType === "PRIMARY" ? -1 : 1)).map((o) => [o.id, o])).values()];
-    add({ id: `f:${fw.id}`, kind: "framework", label: fw.short, sublabel: `${obligations.length} obligation${obligations.length === 1 ? "" : "s"}`, href: `/frameworks/${fw.id}` });
-    obligations.slice(0, PER_FRAMEWORK).forEach((o) => {
-      add({ id: `c:${o.id}`, kind: "citation", label: o.sectionName.split(" - ").slice(-1)[0], sublabel: `Obligation ${o.sourceSectionId}`, href: `/citations?citation=${o.sourceSectionId}` });
-      edges.push({ from: `f:${fw.id}`, to: `c:${o.id}` }, { from: `c:${o.id}`, to: control, dashed: o.mappingType === "SECONDARY" });
-    });
-    const rest = obligations.length - PER_FRAMEWORK;
-    if (rest > 0) {
-      const id = `m:${fw.id}`;
-      add({
-        id, kind: "more", label: PER_FRAMEWORK ? `+${rest} more obligations` : `${rest} obligation${rest > 1 ? "s" : ""}`,
-        sublabel: fw.short, href: `/controls/${encodeURIComponent(c.controlName)}?tab=trace&q=${encodeURIComponent(fw.short)}`,
-      });
-      edges.push({ from: `f:${fw.id}`, to: id }, { from: id, to: control });
-    }
-  }
-  return { nodes, edges };
-}
 
 export default async function ControlPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const c = await getControl(decodeURIComponent(id));
   if (!c) notFound();
-  const trace = buildTrace(c);
   const obligations = new Set(c.trace.flatMap((f) => f.citations.map((o) => o.id))).size;
 
   return (
@@ -80,7 +47,7 @@ export default async function ControlPage({ params }: { params: Promise<{ id: st
           { label: "Evidence statements", value: c.evidence.length, sub: "Across workbook columns" },
         ]}
       />
-      <ControlTabs control={JSON.parse(JSON.stringify(c))} trace={trace} />
+      <ControlTabs control={JSON.parse(JSON.stringify(c))} />
     </Page>
   );
 }

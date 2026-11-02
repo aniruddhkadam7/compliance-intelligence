@@ -14,6 +14,8 @@ export interface TraceNode {
   label: string;
   sublabel?: string;
   href?: string;
+  /** Handled by the caller (e.g. expand a collapsed group) instead of navigating. */
+  action?: string;
   emphasis?: boolean;
 }
 export interface TraceEdge {
@@ -36,7 +38,7 @@ function TraceNodeView({ data }: NodeProps<Node<FlowData>>) {
     <div
       className={cn(
         "w-[230px] rounded-md border bg-surface px-2.5 py-1.5 shadow-xs transition-colors",
-        data.href && "cursor-pointer hover:border-accent",
+        (data.href || data.action) && "cursor-pointer hover:border-accent",
         data.emphasis ? "border-accent ring-2 ring-accent-soft" : "border-border",
         data.kind === "more" && "border-dashed bg-surface-2",
       )}
@@ -55,7 +57,9 @@ function TraceNodeView({ data }: NodeProps<Node<FlowData>>) {
 
 const nodeTypes = { trace: TraceNodeView };
 
-export function TraceGraph({ nodes, edges, height = 520 }: { nodes: TraceNode[]; edges: TraceEdge[]; height?: number }) {
+export function TraceGraph({
+  nodes, edges, height = 520, onAction,
+}: { nodes: TraceNode[]; edges: TraceEdge[]; height?: number; onAction?: (action: string) => void }) {
   const navigate = useNavigate();
   const flow = useMemo(() => {
     // Columns without nodes are dropped so the graph stays compact.
@@ -87,7 +91,7 @@ export function TraceGraph({ nodes, edges, height = 520 }: { nodes: TraceNode[];
         maxZoom={1.6}
         nodesConnectable={false}
         proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, n) => n.data.href && navigate(n.data.href)}
+        onNodeClick={(_, n) => (n.data.action && onAction ? onAction(n.data.action) : n.data.href && navigate(n.data.href))}
       >
         <Background gap={20} size={1} color="var(--border)" />
         <Controls showInteractive={false} position="bottom-right" />
