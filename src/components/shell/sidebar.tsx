@@ -10,7 +10,7 @@ export function Sidebar({ badges, onNavigate }: { badges: { updates: number }; o
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <aside className="flex h-full w-[248px] flex-col border-r border-border bg-surface">
+    <aside className="flex h-full w-[268px] flex-col border-r border-border bg-surface">
       <div className="flex h-12 items-center gap-2.5 border-b border-border px-4">
         <EyLogo className="h-7 w-7 text-fg" />
         <span className="h-6 w-px bg-border" aria-hidden />

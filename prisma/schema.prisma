@@ -1,4 +1,10 @@
 // Compliance Intelligence Platform — data model.
+//
+// Two independent layers:
+//   GLOBAL  Framework, Citation (obligation / source section), SourceRelationship, connector & update tables.
+//           Loaded through the library import; upserted, never deleted by client imports or client resets.
+//   CLIENT  Client, CcfControl, TestProcedure, ControlObligation, MappingProposal, evidence.
+//           Loaded through the client control import; scoped to a client; reset independently.
 // Shaped by inspection of "CCF Demonstration.xlsx" (see docs/DATA_DICTIONARY.md).
 // Every workbook-derived row keeps `raw` (original headers -> original cell values)
 // and `sourceSheet`/`sourceRow` for traceability.
@@ -64,6 +70,9 @@ model Citation {
   requirements RequirementCitation[]
   controls     ControlObligation[]
   procedures   TestProcedureObligation[]
+  relationsFrom SourceRelationship[] @relation("relFrom")
+  relationsTo   SourceRelationship[] @relation("relTo")
+  proposals     MappingProposal[]
 
   @@index([frameworkId])
   @@index([sectionName])
@@ -112,6 +121,8 @@ model RequirementCitation {
 model CcfControl {
   id                        String   @id @default(cuid())
   controlName               String   @unique /// "New Common Control Name " (e.g. AI-CCF-1)
+  /// Owning client (client data layer).
+  clientId                  String?
   domainPrefix              String /// derived: name without trailing number (e.g. AI-CCF)
   scope                     String? /// "Scope (GRC/CSO/OT/DCJ)"
   coverageInIsms            String? /// "Coverage in ISMS Standards"
@@ -149,8 +160,10 @@ model CcfControl {
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
+  client              Client?                     @relation(fields: [clientId], references: [id], onDelete: Cascade)
   mappings            ControlRequirementMapping[]
   obligations         ControlObligation[]
+  proposals           MappingProposal[]
   testProcedures      TestProcedure[]
   evidence            EvidenceRequirement[]
   frameworkReferences ControlFrameworkReference[]
@@ -289,7 +302,10 @@ enum ImportStatus {
 
 model ImportJob {
   id          String       @id @default(cuid())
-  kind        String /// CCF_WORKBOOK | TRANSITION_WORKBOOK
+  kind        String /// LIBRARY | CLIENT_CONTROLS | RELATIONSHIPS (legacy: CCF_WORKBOOK, TRANSITION_WORKBOOK)
+  clientId    String?
+  /// Client mapping that this import replaced, kept so the previous approved mapping stays traceable.
+  previousMapping Json?
   fileName    String
   fileSize    Int
   fileHash    String
@@ -435,4 +451,73 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([entity, entityId])
+}
+
+// ---------------------------------------------------------------------------
+// Global: relationships between source sections (supplied files only)
+// ---------------------------------------------------------------------------
+
+/// VERSION_TRANSITION: legacy section -> latest section (from/to may be empty for added/removed).
+/// CROSS_FRAMEWORK: section in one document related to a section in another.
+model SourceRelationship {
+  id             String   @id @default(cuid())
+  kind           String
+  fromSourceId   String?
+  toSourceId     String?
+  fromCitationId String?
+  toCitationId   String?
+  /// UNCHANGED | MODIFIED | ADDED | REMOVED | SPLIT | COMBINED (transitions) or the stated relationship type
+  status         String
+  note           String?
+  raw            Json
+  sourceSheet    String
+  sourceRow      Int
+  importJobId    String?
+  createdAt      DateTime @default(now())
+
+  fromCitation Citation? @relation("relFrom", fields: [fromCitationId], references: [id], onDelete: SetNull)
+  toCitation   Citation? @relation("relTo", fields: [toCitationId], references: [id], onDelete: SetNull)
+  proposals    MappingProposal[]
+
+  @@index([kind, status])
+  @@index([fromCitationId])
+  @@index([toCitationId])
+}
+
+// ---------------------------------------------------------------------------
+// Client layer
+// ---------------------------------------------------------------------------
+
+model Client {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  createdAt DateTime     @default(now())
+  controls  CcfControl[]
+  proposals MappingProposal[]
+}
+
+/// A proposed change to a client's approved control-to-obligation mapping (e.g. from Version Impact).
+/// Applied only after human approval.
+model MappingProposal {
+  id             String    @id @default(cuid())
+  clientId       String
+  controlId      String
+  /// ADD (map the control to citationId) or REMOVE (unmap it)
+  action         String
+  citationId     String
+  relationshipId String?
+  reason         String
+  status         String    @default("PENDING") /// PENDING | APPROVED | REJECTED
+  createdBy      String
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+  createdAt      DateTime  @default(now())
+
+  client       Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  control      CcfControl          @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  citation     Citation            @relation(fields: [citationId], references: [id], onDelete: Cascade)
+  relationship SourceRelationship? @relation(fields: [relationshipId], references: [id], onDelete: SetNull)
+
+  @@index([clientId, status])
 }

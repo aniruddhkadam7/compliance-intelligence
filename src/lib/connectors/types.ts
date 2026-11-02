@@ -46,8 +46,8 @@ export interface ConnectorDefinition {
   officialUrl: string;
   endpointUrl: string;
   pollingMinutes: number;
-  /** ArC "Source ID" of the framework this connector monitors. */
-  frameworkSourceId: string | null;
+  /** Document this connector monitors, matched by derived family and (optionally) version so it survives re-numbered IDs. */
+  framework: { family: string; version?: string } | null;
   description: string;
   check: (ctx: CheckContext) => Promise<CheckResult>;
 }

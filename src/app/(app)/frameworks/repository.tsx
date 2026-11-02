@@ -15,6 +15,7 @@ import { DataTable, type SortState } from "@/components/data-table";
 import { apiGet, qs } from "@/lib/client/api";
 import { useDebounced, useUrlState } from "@/lib/client/hooks";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { TERMS } from "@/lib/terms";
 
 interface FrameworkRow {
   id: string; sourceId: string; name: string; short: string; family: string | null; versionLabel: string | null; type: string | null;
@@ -95,7 +96,7 @@ export function FrameworkRepository() {
   return (
     <Page>
       <PageHeader
-        title="Framework Repository"
+        title={TERMS.frameworks}
         description="Regulatory and standards frameworks in the library. “Last updated” is the publication date reported by the official source where it is monitored."
       />
       <Card>

@@ -5,21 +5,11 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { prisma } from "@/lib/db";
-import { deriveFamily } from "@/lib/frameworks";
+import { publisherOf as publisher } from "@/lib/queries/sources";
+import { TERMS } from "@/lib/terms";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Overview" };
-
-/** Publisher grouping used for the hover breakdown. */
-function publisher(name: string) {
-  const fam = deriveFamily(name);
-  if (/^NIST/.test(fam)) return "NIST";
-  if (/^ISO/.test(fam)) return "ISO / ISO-IEC";
-  if (/^IEC/.test(fam)) return "IEC 62443";
-  if (/^CIS/.test(fam)) return "CIS";
-  if (fam === "GDPR" || fam === "EU AI Act") return "EU regulation";
-  return "Other";
-}
+export const metadata = { title: TERMS.overview };
 
 const count = (items: string[]) =>
   [...items.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
@@ -33,7 +23,7 @@ export default async function OverviewPage() {
   if (docs.length === 0) {
     return (
       <Page>
-        <PageHeader title="Overview" />
+        <PageHeader title={TERMS.overview} />
         <Card>
           <EmptyState
             icon={DatabaseZap}
@@ -51,7 +41,7 @@ export default async function OverviewPage() {
 
   return (
     <Page>
-      <PageHeader title="Overview" />
+      <PageHeader title={TERMS.overview} />
 
       <Card className="mb-5 border-dashed">
         <CardBody className="flex items-start gap-3">
@@ -81,7 +71,7 @@ export default async function OverviewPage() {
           }
         >
           <Link href="/sources" className="block rounded-lg border border-border bg-surface p-5 shadow-xs transition-colors hover:border-accent">
-            <div className="text-xs font-medium uppercase tracking-wider text-muted">Authoritative documents</div>
+            <div className="text-xs font-medium uppercase tracking-wider text-muted">{TERMS.authoritativeDocuments}</div>
             <div className="mt-1 text-[56px] font-semibold leading-none tracking-tight tabular text-fg">{docs.length}</div>
             <div className="mt-2 text-xs text-subtle">Hover for the breakdown · select to open Sources</div>
           </Link>

@@ -8,12 +8,33 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/sheet";
-import { Mono, SectionTitle } from "@/components/common";
+import { SectionTitle } from "@/components/common";
 import { ApiError, apiSend } from "@/lib/client/api";
 import { cn, formatNumber } from "@/lib/utils";
 import { ISSUE_LABELS } from "@/lib/labels";
 
-type Kind = "ccf" | "transition";
+type Kind = "LIBRARY" | "CLIENT_CONTROLS" | "RELATIONSHIPS";
+
+const KINDS: { kind: Kind; layer: string; title: string; desc: string; confirm: string; done: (c: Record<string, number>) => string; next: string }[] = [
+  {
+    kind: "LIBRARY", layer: "Global", title: "Authoritative document library",
+    desc: "Documents and their regulatory/legal obligations (“Citation Sources” sheet with Parent Source ID and Source Section ID). Adds and updates; never deletes, and never touches client data.",
+    confirm: "Documents and obligations in this file are added or updated. Nothing is deleted, and client controls and mappings are not affected.",
+    done: (c) => `Library updated: ${formatNumber(c.frameworks ?? 0)} documents, ${formatNumber(c.citations ?? 0)} obligations.`, next: "/frameworks",
+  },
+  {
+    kind: "CLIENT_CONTROLS", layer: "Client", title: "Client controls",
+    desc: "The client's controls and test procedures, mapped to Source Section IDs in the library. Replaces only this client's controls; the previous mapping is kept in the import history.",
+    confirm: "The client's current controls and mappings are replaced by this file (the previous mapping is recorded in the import history). The global document library is not affected.",
+    done: (c) => `Imported ${formatNumber(c.controls ?? 0)} controls and ${formatNumber(c.testProcedures ?? 0)} test procedures.`, next: "/controls",
+  },
+  {
+    kind: "RELATIONSHIPS", layer: "Global", title: "Source relationships",
+    desc: "Legacy → latest transitions (Legacy Source ID, Latest Source ID, Status) or cross-framework links (Source ID A, Source ID B, Relationship). Replaces only relationships of the kinds in the file.",
+    confirm: "Relationships of the kinds in this file are replaced. Documents, obligations and client data are not affected.",
+    done: (c) => `Imported ${formatNumber((c.versionTransitions ?? 0) + (c.crossFramework ?? 0))} relationships.`, next: "/version-impact",
+  },
+];
 interface Issue { severity: "ERROR" | "WARNING" | "INFO"; code: string; sheet?: string; row?: number; column?: string; message: string }
 interface SheetSummary { name: string; role: string; headerRow: number | null; headers: string[]; rowCount: number; missingRequired: string[]; preview: Record<string, string | null>[] }
 interface Preview {
@@ -38,7 +59,8 @@ export function ImportWizard() {
   const router = useRouter();
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
-  const [kind, setKind] = useState<Kind>("ccf");
+  const [kind, setKind] = useState<Kind>("CLIENT_CONTROLS");
+  const meta = KINDS.find((k) => k.kind === kind)!;
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState<"preview" | "confirm" | null>(null);
@@ -74,11 +96,11 @@ export function ImportWizard() {
     fd.set("previewJobId", preview.jobId);
     try {
       const r = await apiSend<{ counts: Record<string, number> }>("/api/import/confirm", fd);
-      toast.success(kind === "ccf" ? `Imported ${formatNumber(r.counts.citations)} citations and ${formatNumber(r.counts.controls)} controls.` : `Imported ${r.counts.rows} transition rows.`);
+      toast.success(meta.done(r.counts));
       qc.invalidateQueries();
       reset();
       router.refresh();
-      router.push(kind === "ccf" ? "/data?tab=history" : "/version-impact");
+      router.push(meta.next);
     } catch (e) {
       const details = e instanceof ApiError && Array.isArray(e.details) ? ` (${e.details.length} errors)` : "";
       toast.error((e instanceof Error ? e.message : "Import failed.") + details);
@@ -102,18 +124,16 @@ export function ImportWizard() {
       <Card>
         <CardHeader title="1. Choose workbook type and file" description="Accepted: .xlsx, up to 4 MB (Vercel request limit). The original file is never modified." />
         <CardBody className="space-y-3">
-          <div className="grid gap-2">
-            {([
-              ["ccf", "Framework and control workbook", "Frameworks, regulatory obligations, CCF controls and their mappings. Replaces the current data."],
-            ] as const).map(([k, title, desc]) => (
+          <div className="grid gap-2 md:grid-cols-3">
+            {KINDS.map((k) => (
               <button
-                key={k}
+                key={k.kind}
                 disabled={!!busy}
-                onClick={() => { setKind(k); reset(); }}
-                className={cn("rounded-md border p-3 text-left transition-colors", kind === k ? "border-accent bg-accent-soft/50 ring-1 ring-accent" : "border-border hover:bg-surface-2")}
+                onClick={() => { setKind(k.kind); reset(); }}
+                className={cn("rounded-md border p-3 text-left transition-colors", kind === k.kind ? "border-accent bg-accent-soft/50 ring-1 ring-accent" : "border-border hover:bg-surface-2")}
               >
-                <div className="text-[13px] font-semibold text-fg">{title}</div>
-                <div className="mt-0.5 text-xs text-muted">{desc}</div>
+                <div className="flex items-center gap-2 text-[13px] font-semibold text-fg">{k.title}<Badge tone={k.layer === "Global" ? "info" : "accent"}>{k.layer}</Badge></div>
+                <div className="mt-0.5 text-xs text-muted">{k.desc}</div>
               </button>
             ))}
           </div>
@@ -149,7 +169,7 @@ export function ImportWizard() {
                     {preview.sheets.map((s) => (
                       <tr key={s.name} onClick={() => setSheet(s.name)} className={cn("cursor-pointer border-b border-border last:border-0 hover:bg-surface-2", sheet === s.name && "bg-accent-soft/50")}>
                         <td className="px-4 py-2 font-medium text-fg"><span className="flex items-center gap-2"><FileSpreadsheet className="size-3.5 text-muted" />{s.name}</span></td>
-                        <td className="px-3 py-2"><Badge tone={s.role === "UNRECOGNISED" ? "outline" : "neutral"}>{kind === "ccf" ? ROLE_LABEL[s.role] : preview.columnMap?.[s.name] ? "Transition rows" : "Not imported"}</Badge></td>
+                        <td className="px-3 py-2"><Badge tone={s.role === "UNRECOGNISED" ? "outline" : "neutral"}>{ROLE_LABEL[s.role] ?? s.role}</Badge></td>
                         <td className="px-3 py-2 tabular text-fg-2">{s.headerRow ?? "none"}</td>
                         <td className="px-3 py-2 tabular text-fg-2">{s.headers.length}</td>
                         <td className="px-3 py-2 tabular text-fg-2">{formatNumber(s.rowCount)}</td>
@@ -177,19 +197,6 @@ export function ImportWizard() {
                   {selected.headers.length > 14 && <p className="mt-1.5 text-[11px] text-muted">Showing 14 of {selected.headers.length} columns. All columns are preserved on import.</p>}
                 </div>
               )}
-              {kind === "transition" && preview.columnMap && Object.entries(preview.columnMap).map(([name, map]) => (
-                <div key={name} className="border-t border-border p-4">
-                  <SectionTitle>Detected column mapping · {name}</SectionTitle>
-                  <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
-                    {Object.entries(map).map(([f, h]) => (
-                      <div key={f} className="flex items-center justify-between gap-2 border-b border-border py-1 text-xs">
-                        <span className="text-muted">{f}</span>
-                        {h ? <Mono className="truncate text-[11px]">{h}</Mono> : <span className="text-subtle">not found</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
             </Card>
 
             <div className="space-y-4">
@@ -237,12 +244,8 @@ export function ImportWizard() {
       <Dialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title={kind === "ccf" ? "Replace reference data?" : "Import transition rows?"}
-        description={
-          kind === "ccf"
-            ? "All frameworks, regulatory obligations, CCF controls and their mappings will be replaced by this workbook in one transaction. Connector history, framework update reviews and the audit log are kept."
-            : "Transition rows are added to the Version Impact module. They do not change CCF mappings."
-        }
+        title={`Import ${meta.title.toLowerCase()}?`}
+        description={meta.confirm}
         footer={<><Button onClick={() => setConfirmOpen(false)}>Cancel</Button><Button variant="primary" onClick={confirm}>Import {file?.name}</Button></>}
       />
     </div>

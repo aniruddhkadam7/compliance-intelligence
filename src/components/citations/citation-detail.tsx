@@ -63,7 +63,7 @@ export function CitationDetailSheet({ citationId, onClose }: { citationId: strin
             </div>
             <KeyValue
               items={[
-                { label: "Obligation ID", value: <Mono>{data.sourceSectionId}</Mono> },
+                { label: "Source ID", value: <Mono>{data.sourceSectionId}</Mono> },
                 { label: "Framework", value: <Link href={`/frameworks/${data.framework.id}`} className="text-accent hover:underline">{data.framework.short}</Link> },
                 { label: "Framework version", value: data.framework.versionLabel, hint: "Derived from the framework name" },
                 { label: "Framework ID", value: <Mono>{data.framework.sourceId}</Mono> },
@@ -88,11 +88,10 @@ export function CitationDetailSheet({ citationId, onClose }: { citationId: strin
             </div>
           </section>
 
+          {controls.length > 0 && (
           <section className="p-5">
-            <SectionTitle>Associated CCF controls</SectionTitle>
-            {controls.length === 0 ? (
-              <p className="text-xs text-warning">No CCF control is mapped to this obligation.</p>
-            ) : (
+            <SectionTitle>Client controls mapped (client data)</SectionTitle>
+            {(
               <ul className="divide-y divide-border rounded-md border border-border">
                 {controls.map((c) => (
                   <li key={c.control.id}>
@@ -111,6 +110,7 @@ export function CitationDetailSheet({ citationId, onClose }: { citationId: strin
               </ul>
             )}
           </section>
+          )}
         </div>
       )}
     </Sheet>

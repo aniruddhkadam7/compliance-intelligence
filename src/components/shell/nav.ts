@@ -1,6 +1,7 @@
 import {
-  LayoutDashboard, Library, Quote, Network, ShieldCheck, GitCompareArrows, RadioTower, DatabaseZap, BookOpenText, type LucideIcon,
+  LayoutDashboard, Library, Quote, Network, ShieldCheck, GitCompareArrows, DatabaseZap, BookOpenText, type LucideIcon,
 } from "lucide-react";
+import { TERMS } from "@/lib/terms";
 
 export interface NavItem {
   href: string;
@@ -9,29 +10,24 @@ export interface NavItem {
   badgeKey?: "updates";
 }
 
+// Updates & Monitoring (/updates) is reached from Sources and the notification bell.
 export const NAV: { section: string; items: NavItem[] }[] = [
-  { section: "Intelligence", items: [{ href: "/overview", label: "Overview", icon: LayoutDashboard }] },
+  { section: "Intelligence", items: [{ href: "/overview", label: TERMS.overview, icon: LayoutDashboard }] },
   {
-    section: "Repository",
+    section: "Global repository",
     items: [
-      { href: "/sources", label: "Sources", icon: BookOpenText },
-      { href: "/frameworks", label: "Framework Repository", icon: Library },
-      { href: "/citations", label: "Obligation Explorer", icon: Quote },
+      { href: "/frameworks", label: TERMS.frameworks, icon: Library },
+      { href: "/sources", label: TERMS.sources, icon: BookOpenText, badgeKey: "updates" },
+      { href: "/citations", label: TERMS.obligations, icon: Quote },
+      { href: "/mappings", label: TERMS.frameworkMapping, icon: Network },
     ],
   },
   {
-    section: "Mapping",
+    section: "Client",
     items: [
-      { href: "/mappings", label: "Legacy vs Latest", icon: Network },
-      { href: "/controls", label: "Internal CCF Mapping", icon: ShieldCheck },
-      { href: "/version-impact", label: "Version Impact", icon: GitCompareArrows },
+      { href: "/controls", label: TERMS.clientControls, icon: ShieldCheck },
+      { href: "/version-impact", label: TERMS.versionImpact, icon: GitCompareArrows },
     ],
   },
-  {
-    section: "Operations",
-    items: [
-      { href: "/updates", label: "Updates & Connectors", icon: RadioTower, badgeKey: "updates" },
-      { href: "/data", label: "Data & Imports", icon: DatabaseZap },
-    ],
-  },
+  { section: "Operations", items: [{ href: "/data", label: TERMS.data, icon: DatabaseZap }] },
 ];

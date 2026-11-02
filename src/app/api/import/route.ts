@@ -35,7 +35,7 @@ export const GET = handle(async (req: Request) => {
     return NextResponse.json({ items, total, page: p.page, pageSize: p.pageSize });
   }
 
-  const jobId = p.jobId ?? (await prisma.importJob.findFirst({ where: { kind: "CCF_WORKBOOK", status: "COMPLETED" }, orderBy: { completedAt: "desc" } }))?.id;
+  const jobId = p.jobId ?? (await prisma.importJob.findFirst({ where: { status: "COMPLETED" }, orderBy: { completedAt: "desc" } }))?.id;
   if (!jobId) return NextResponse.json({ items: [], total: 0, page: 1, pageSize: p.pageSize, job: null, summary: [] });
   const where = { importJobId: jobId, ...(p.severity && { severity: p.severity }), ...(p.code && { code: p.code }) };
   const [items, total, job, summary] = await Promise.all([

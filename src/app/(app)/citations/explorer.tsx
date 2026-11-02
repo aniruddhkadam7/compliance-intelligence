@@ -12,6 +12,7 @@ import { CitationDetailSheet } from "@/components/citations/citation-detail";
 import { apiGet } from "@/lib/client/api";
 import { useDebounced, useUrlState } from "@/lib/client/hooks";
 import { formatNumber } from "@/lib/utils";
+import { TERMS } from "@/lib/terms";
 
 interface Facets {
   frameworks: { id: string; name: string; short: string; citations: number; family: string | null; version: string | null }[];
@@ -20,7 +21,7 @@ interface Facets {
 
 const FIELDS = [
   { value: "all", label: "All fields" },
-  { value: "sectionId", label: "Obligation ID" },
+  { value: "sectionId", label: "Source ID" },
   { value: "sectionName", label: "Requirement description" },
   { value: "text", label: "Full requirement text" },
 ];
@@ -45,14 +46,14 @@ export function CitationExplorer() {
   return (
     <Page>
       <PageHeader
-        title="Obligation Explorer"
-        description="Search regulatory and legal obligations across all frameworks, and see which CCF controls each one maps to."
+        title={TERMS.obligations}
+        description="Every regulatory and legal requirement in the global document library, identified by its unique Source ID. Independent of any client data."
       />
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
           <div className="relative min-w-[260px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search obligation ID or requirement description…" className="pl-8" aria-label="Search obligations" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Source ID or requirement description…" className="pl-8" aria-label="Search obligations" />
           </div>
           <Select value={s.field} onChange={(v) => set({ field: v })} options={FIELDS} aria-label="Search field" />
           <Select
@@ -71,11 +72,6 @@ export function CitationExplorer() {
               options={family.versions.map((v) => ({ value: v.version ?? "", label: `Version ${v.version}` }))} aria-label="Framework version"
             />
           )}
-          <Select
-            value={s.mapped} onChange={(v) => set({ mapped: v })} allLabel="Any mapping status"
-            options={[{ value: "yes", label: "Mapped to a CCF control" }, { value: "no", label: "Not mapped to a control" }]}
-            aria-label="Mapping status"
-          />
           {active && (
             <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", frameworkId: "", family: "", version: "", requirementId: "", mapped: "" }); }}>
               <X /> Clear

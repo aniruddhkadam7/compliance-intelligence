@@ -13,7 +13,7 @@ export async function getDashboard() {
     prisma.ccfControl.count(),
     prisma.frameworkUpdate.count({ where: { reviewStatus: "NEW" } }),
     prisma.connector.findFirst({ where: { lastSuccessAt: { not: null } }, orderBy: { lastSuccessAt: "desc" }, select: { lastSuccessAt: true, name: true } }),
-    prisma.importJob.findFirst({ where: { status: "COMPLETED", kind: "CCF_WORKBOOK" }, orderBy: { completedAt: "desc" } }),
+    prisma.importJob.findFirst({ where: { status: "COMPLETED" }, orderBy: { completedAt: "desc" } }),
   ]);
 
   // Per framework: obligations, and obligations with at least one mapped CCF control.

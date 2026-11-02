@@ -1,58 +1,59 @@
 "use client";
 import Link from "next/link";
-import { ArrowRight, FileSpreadsheet, GitCompareArrows } from "lucide-react";
-import { EmptyState, Page, PageHeader } from "@/components/common";
-import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
+import { Network, Upload } from "lucide-react";
+import { EmptyState, ErrorState, Page, PageHeader } from "@/components/common";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { RelationshipTable } from "@/components/relationship-table";
+import { apiGet } from "@/lib/client/api";
+import { useUrlState } from "@/lib/client/hooks";
+import { TERMS } from "@/lib/terms";
 
-// The legacy-to-latest relationship is supplied as a file that maps legacy source IDs to
-// latest source IDs. Until it is imported this view only explains what it will show.
-// (The earlier requirement-based views live in ./matrix, ./pairs, ./graph-view and ./unmapped.)
+interface Pair { from: string; to: string; count: number; fromShort: string; toShort: string }
 
-const OUTCOMES: [string, string][] = [
-  ["Unchanged", "The legacy section carries over to the latest version as is."],
-  ["Changed", "The section continues but its wording or scope has changed."],
-  ["Split", "One legacy section is now covered by several latest sections."],
-  ["Combined", "Several legacy sections are merged into one latest section."],
-  ["Added", "A new section with no legacy equivalent."],
-  ["Retired", "A legacy section with no equivalent in the latest version."],
-];
-
+/** Global framework intelligence: relationships between sections of different authoritative documents. */
 export function MappingExplorer() {
+  const [s, set] = useUrlState({ pair: "" });
+  const pairs = useQuery({ queryKey: ["rel-pairs", "CROSS_FRAMEWORK"], queryFn: () => apiGet<Pair[]>("/api/mappings?view=pairs&kind=CROSS_FRAMEWORK") });
+  const list = pairs.data ?? [];
+  const pair = list.find((p) => `${p.from}|${p.to}` === s.pair) ?? list[0];
+
   return (
     <Page>
       <PageHeader
-        title="Legacy vs Latest"
-        description="How each section of a legacy framework version moves to the latest version (for example NIST CSF 1.1 to 2.0), and which CCF controls are affected."
+        title={TERMS.frameworkMapping}
+        description="Relationships between sections of different authoritative documents, identified by Source ID. Only relationships supplied in mapping files are shown; none are inferred."
       />
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
+      {pairs.isLoading && <Skeleton className="h-[320px]" />}
+      {!!pairs.error && <Card><ErrorState error={pairs.error} onRetry={pairs.refetch} /></Card>}
+      {pairs.data && !pair && (
+        <Card>
           <EmptyState
-            icon={FileSpreadsheet}
-            title="Awaiting the legacy-to-latest mapping file"
-            description="This view is driven by a file that maps each legacy source ID to its latest source ID (for example 200 → 310). Once it is imported, every legacy section is shown next to its latest counterpart with the controls mapped to each."
-            action={
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button asChild size="sm" variant="primary"><Link href="/data?tab=import">Go to Data & Imports</Link></Button>
-                <Button asChild size="sm"><Link href="/version-impact"><GitCompareArrows /> See Version Impact</Link></Button>
-              </div>
-            }
+            icon={Network}
+            title="No framework relationships imported yet"
+            description="Import a source relationship file with “Source ID A”, “Source ID B” and “Relationship” columns. Each row links a section of one document to a section of another."
+            action={<Button asChild variant="primary"><Link href="/data?tab=import"><Upload /> Go to {TERMS.data}</Link></Button>}
           />
         </Card>
-        <Card>
-          <CardHeader title="What each mapping will show" />
-          <CardBody>
-            <ul className="space-y-2.5">
-              {OUTCOMES.map(([label, text]) => (
-                <li key={label} className="flex items-start gap-2 text-[13px]">
-                  <ArrowRight className="mt-0.5 size-3.5 shrink-0 text-accent" />
-                  <span><span className="font-medium text-fg">{label}.</span> <span className="text-fg-2">{text}</span></span>
-                </li>
-              ))}
-            </ul>
-          </CardBody>
-        </Card>
-      </div>
+      )}
+      {pair && (
+        <div className="space-y-4">
+          <Card className="flex flex-wrap items-center gap-3 p-3">
+            <span className="text-xs text-muted">Documents</span>
+            <Select
+              value={`${pair.from}|${pair.to}`}
+              onChange={(v) => set({ pair: v })}
+              options={list.map((p) => ({ value: `${p.from}|${p.to}`, label: `${p.fromShort} ↔ ${p.toShort}`, hint: `${p.count} links` }))}
+              triggerClassName="min-w-[260px]"
+              aria-label="Document pair"
+            />
+          </Card>
+          <RelationshipTable kind="CROSS_FRAMEWORK" from={pair.from} to={pair.to} />
+        </div>
+      )}
     </Page>
   );
 }

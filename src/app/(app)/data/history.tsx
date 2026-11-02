@@ -15,6 +15,11 @@ interface Job {
 }
 interface Audit { id: string; actor: string; role: string | null; action: string; entity: string; entityId: string | null; details: unknown; createdAt: string }
 
+const KIND_LABEL: Record<string, string> = {
+  LIBRARY: "Document library", CLIENT_CONTROLS: "Client controls", RELATIONSHIPS: "Source relationships",
+  CCF_WORKBOOK: "Workbook (legacy)", TRANSITION_WORKBOOK: "Transition (legacy)",
+};
+
 const statusTone = (s: string) => (s === "COMPLETED" ? "success" : s === "FAILED" ? "danger" : "neutral");
 
 export function ImportHistory() {
@@ -26,7 +31,7 @@ export function ImportHistory() {
   });
   const columns = useMemo<ColumnDef<Job, unknown>[]>(() => [
     { id: "createdAt", header: "Started", size: 150, enableSorting: false, cell: ({ row }) => <span className="whitespace-nowrap text-xs text-fg-2">{formatDateTime(row.original.createdAt)}</span> },
-    { id: "kind", header: "Type", size: 120, enableSorting: false, cell: ({ row }) => <Badge tone="outline">{row.original.kind === "CCF_WORKBOOK" ? "CCF workbook" : "Transition"}</Badge> },
+    { id: "kind", header: "Type", size: 120, enableSorting: false, cell: ({ row }) => <Badge tone="outline">{KIND_LABEL[row.original.kind] ?? row.original.kind}</Badge> },
     { id: "file", header: "File", enableSorting: false, cell: ({ row }) => <div><div className="text-fg">{row.original.fileName}</div><Mono className="text-[10.5px] text-subtle">sha256 {row.original.fileHash.slice(0, 16)}… · {(row.original.fileSize / 1024 / 1024).toFixed(2)} MB</Mono></div> },
     { id: "status", header: "Status", size: 110, enableSorting: false, cell: ({ row }) => <Badge tone={statusTone(row.original.status)}>{row.original.status.toLowerCase()}</Badge> },
     {

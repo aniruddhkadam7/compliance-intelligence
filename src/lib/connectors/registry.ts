@@ -15,12 +15,13 @@ const json = (v: unknown) => v as Prisma.InputJsonValue;
 
 /** Upserts static connector metadata (idempotent; preserves state and history). */
 export async function ensureConnectors() {
-  const frameworks = await prisma.framework.findMany({ where: { sourceId: { in: CONNECTORS.map((c) => c.frameworkSourceId).filter(Boolean) as string[] } }, select: { id: true, sourceId: true } });
-  const fwId = (sid: string | null) => frameworks.find((f) => f.sourceId === sid)?.id ?? null;
+  const frameworks = await prisma.framework.findMany({ select: { id: true, family: true, versionLabel: true } });
+  const fwId = (m: ConnectorDefinition["framework"]) =>
+    m ? frameworks.find((f) => f.family === m.family && (!m.version || f.versionLabel === m.version))?.id ?? null : null;
   for (const c of CONNECTORS) {
     const data = {
       name: c.name, sourceName: c.sourceName, publisher: c.publisher, mechanism: c.mechanism,
-      officialUrl: c.officialUrl, endpointUrl: c.endpointUrl, frameworkId: fwId(c.frameworkSourceId),
+      officialUrl: c.officialUrl, endpointUrl: c.endpointUrl, frameworkId: fwId(c.framework),
     };
     await prisma.connector.upsert({ where: { id: c.id }, create: { id: c.id, pollingMinutes: c.pollingMinutes, ...data }, update: data });
   }

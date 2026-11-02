@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { DataTable } from "@/components/data-table";
-import { Badge } from "@/components/ui/badge";
 import { Mono } from "@/components/common";
 import { apiGet, qs } from "@/lib/client/api";
 
@@ -51,7 +50,7 @@ export function CitationTable({
   const { data, isLoading, error, refetch } = useCitations(query);
   const columns = useMemo<ColumnDef<CitationRow, unknown>[]>(() => {
     const cols: ColumnDef<CitationRow, unknown>[] = [
-      { id: "sectionId", header: "Obligation ID", size: 110, cell: ({ row }) => <Mono>{row.original.sourceSectionId}</Mono> },
+      { id: "sectionId", header: "Source ID", size: 110, cell: ({ row }) => <Mono>{row.original.sourceSectionId}</Mono> },
       {
         id: "sectionName", header: "Requirement description",
         cell: ({ row }) => (
@@ -71,15 +70,10 @@ export function CitationTable({
           </div>
         ),
       });
-    cols.push(
-      {
-        id: "controls", header: "Control map", enableSorting: false, size: 110,
-        cell: ({ row }) => {
-          const n = row.original.controls;
-          return n ? <Badge tone="accent">{n} control{n > 1 ? "s" : ""}</Badge> : <Badge tone="warning">None</Badge>;
-        },
-      },
-    );
+    cols.push({
+      id: "frameworkId", header: "Framework ID", enableSorting: false, size: 100,
+      cell: ({ row }) => <Mono className="text-[11px]">{row.original.framework.sourceId}</Mono>,
+    });
     return cols;
   }, [hideFramework]);
 

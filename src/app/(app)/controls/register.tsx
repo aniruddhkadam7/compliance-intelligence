@@ -3,8 +3,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@/components/shell/nav-progress";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { History, Search, X } from "lucide-react";
-import { Mono, Page, PageHeader } from "@/components/common";
+import Link from "next/link";
+import { FileSpreadsheet, History, Search, Upload, X } from "lucide-react";
+import { EmptyState, Mono, Page, PageHeader } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -14,6 +15,7 @@ import { DataTable } from "@/components/data-table";
 import { apiGet, qs } from "@/lib/client/api";
 import { useDebounced, useUrlState } from "@/lib/client/hooks";
 import { formatDateTime, formatNumber } from "@/lib/utils";
+import { TERMS } from "@/lib/terms";
 
 interface ControlRow {
   id: string; controlName: string; title: string | null; category: string | null; subCategory: string | null; scope: string | null;
@@ -38,7 +40,7 @@ export function ControlRegister() {
     queryKey: ["last-ccf-import"],
     queryFn: () =>
       apiGet<{ items: { kind: string; status: string; fileName: string; completedAt: string | null }[] }>("/api/import?view=jobs&pageSize=20")
-        .then((r) => r.items.find((j) => j.kind === "CCF_WORKBOOK" && j.status === "COMPLETED") ?? null),
+        .then((r) => r.items.find((j) => j.kind === "CLIENT_CONTROLS" && j.status === "COMPLETED") ?? null),
   });
   const facets = useQuery({ queryKey: ["control-facets"], queryFn: () => apiGet<{ categories: Facet[]; scopes: Facet[]; prefixes: Facet[] }>("/api/controls?view=facets") });
   const list = useQuery({
@@ -71,10 +73,33 @@ export function ControlRegister() {
   ], []);
 
   const active = [s.q, s.category, s.scope, s.prefix, s.mapping].some(Boolean);
+
+  // Client layer is empty until the client uploads its controls.
+  if (list.data && list.data.total === 0 && !active)
+    return (
+      <Page>
+        <PageHeader title={TERMS.clientControls} description="The client's internal controls and the regulatory obligations each one is mapped to." />
+        <Card>
+          <EmptyState
+            icon={FileSpreadsheet}
+            title="No client control data imported"
+            description={
+              <>
+                Upload the client&apos;s control workbook (.xlsx, up to 4 MB) under {TERMS.data} → Client controls. It needs a control sheet with a
+                “New Common Control Name” column, and a test procedure sheet with Control ID, Test Procedure ID, Test Procedure and Source Section ID columns.
+                A procedure can list several Source IDs; they are resolved against the global document library.
+              </>
+            }
+            action={<Button asChild variant="primary"><Link href="/data?tab=import"><Upload /> Upload control workbook</Link></Button>}
+          />
+        </Card>
+      </Page>
+    );
+
   return (
     <Page>
       <PageHeader
-        title="Internal CCF Mapping"
+        title={TERMS.clientControls}
         description="The client's internal controls and the regulatory obligations each one is mapped to."
         meta={lastSync.data ? (
           <Badge tone="outline"><History /> Last sync {formatDateTime(lastSync.data.completedAt)} · {lastSync.data.fileName}</Badge>
@@ -94,7 +119,6 @@ export function ControlRegister() {
             options={[
               { value: "mapped", label: "Mapped to obligations" },
               { value: "unmapped", label: "Not mapped" },
-              { value: "conflict", label: "Working sheet differs" },
             ]}
             aria-label="Mapping state"
           />
