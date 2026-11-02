@@ -27,15 +27,12 @@ export async function listCitations(f: CitationFilters) {
     if (f.field === "all" || f.field === "sectionId") textMatch.push({ sourceSectionId: { startsWith: q } });
     if (f.field === "all" || f.field === "sectionName") textMatch.push({ sectionName: { contains: q, mode: "insensitive" } });
     if (f.field === "text") textMatch.push({ sectionText: { contains: q, mode: "insensitive" } });
-    if (f.field === "all" || f.field === "requirement")
-      textMatch.push({ requirements: { some: { requirement: { OR: [{ requirementId: q }, { name: { contains: q, mode: "insensitive" } }] } } } });
   }
   const where: Prisma.CitationWhereInput = {
     ...(f.frameworkId && { frameworkId: f.frameworkId }),
     ...((f.family || f.version) && { framework: { ...(f.family && { family: f.family }), ...(f.version && { versionLabel: f.version }) } }),
-    ...(f.requirementId && { requirements: { some: { requirement: { requirementId: f.requirementId } } } }),
-    ...(f.mapped === "yes" && { requirements: { some: { requirement: { mappings: { some: { authoritative: true } } } } } }),
-    ...(f.mapped === "no" && { requirements: { every: { requirement: { mappings: { none: { authoritative: true } } } } } }),
+    ...(f.mapped === "yes" && { controls: { some: {} } }),
+    ...(f.mapped === "no" && { controls: { none: {} } }),
     ...(textMatch.length && { OR: textMatch }),
   };
   const base = f.sort && SORTS[f.sort] ? SORTS[f.sort] : { sourceSectionId: "asc" as const };
@@ -49,16 +46,7 @@ export async function listCitations(f: CitationFilters) {
       select: {
         id: true, sourceSectionId: true, sectionName: true,
         framework: { select: { id: true, name: true, versionLabel: true, sourceId: true } },
-        requirements: {
-          select: {
-            requirement: {
-              select: {
-                requirementId: true, name: true,
-                _count: { select: { mappings: { where: { authoritative: true } } } },
-              },
-            },
-          },
-        },
+        _count: { select: { controls: true } },
       },
     }),
     prisma.citation.count({ where }),
@@ -70,7 +58,7 @@ export async function listCitations(f: CitationFilters) {
       sectionName: c.sectionName,
       sectionLabel: sectionLabel(c.sectionName),
       framework: { ...c.framework, short: shortName(c.framework.name) },
-      requirements: c.requirements.map((r) => ({ requirementId: r.requirement.requirementId, name: r.requirement.name, controls: r.requirement._count.mappings })),
+      controls: c._count.controls,
     })),
     total, page: f.page, pageSize: f.pageSize,
   };
@@ -87,19 +75,11 @@ export async function getCitation(id: string) {
     where: { OR: [{ id }, { sourceSectionId: id }] },
     include: {
       framework: true,
-      requirements: {
-        include: {
-          requirement: {
-            include: {
-              mappings: {
-                where: { authoritative: true },
-                include: { control: { select: { id: true, controlName: true, title: true, category: true } } },
-              },
-              _count: { select: { citations: true } },
-            },
-          },
-        },
+      controls: {
+        include: { control: { select: { id: true, controlName: true, title: true, category: true } } },
+        orderBy: { control: { controlName: "asc" } },
       },
+      procedures: { include: { testProcedure: { select: { procedureId: true, control: { select: { controlName: true } } } } } },
     },
   });
   if (!c) return null;

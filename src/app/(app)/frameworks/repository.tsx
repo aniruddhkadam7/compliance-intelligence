@@ -9,18 +9,17 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Badge, Dot } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import { DataTable, type SortState } from "@/components/data-table";
 import { apiGet, qs } from "@/lib/client/api";
 import { useDebounced, useUrlState } from "@/lib/client/hooks";
-import { formatDateTime, formatNumber } from "@/lib/utils";
+import { formatDate, formatNumber } from "@/lib/utils";
 
 interface FrameworkRow {
   id: string; sourceId: string; name: string; short: string; family: string | null; versionLabel: string | null; type: string | null;
   group: string | null; jurisdiction: string | null; licensing: string | null; documentUrl: string | null; prioritizedByGsk: boolean;
-  updatedAt: string; citations: number; requirements: number; controls: number;
-  connector: { id: string; name: string; lastStatus: string | null; lastCheckedAt: string | null } | null;
+  citations: number; sourceUpdatedAt: string | null; sourceUpdatedBy: string | null;
 }
 interface Facet { value: string; count: number }
 
@@ -70,23 +69,16 @@ export function FrameworkRepository() {
     { id: "type", header: "Category", size: 150, cell: ({ row }) => <Badge tone={typeTone(row.original.type)}>{row.original.type ?? "—"}</Badge> },
     { id: "group", header: "Group", size: 160, cell: ({ row }) => <span className="whitespace-nowrap text-fg-2">{row.original.group}</span> },
     { id: "jurisdiction", header: "Jurisdiction", size: 90, cell: ({ row }) => <span className="text-fg-2">{row.original.jurisdiction}</span> },
-    { id: "citations", header: "Citations", size: 90, cell: ({ row }) => <span className="tabular">{formatNumber(row.original.citations)}</span> },
-    { id: "requirements", header: "IRs", size: 60, cell: ({ row }) => <span className="tabular">{row.original.requirements}</span> },
-    { id: "controls", header: "Controls", size: 80, cell: ({ row }) => <span className="tabular">{row.original.controls}</span> },
+    { id: "citations", header: "Obligations", size: 100, cell: ({ row }) => <span className="tabular">{formatNumber(row.original.citations)}</span> },
     {
-      id: "status", header: "Status", enableSorting: false, size: 150,
-      cell: ({ row: { original: f } }) => (
-        <div className="flex flex-col gap-1">
-          {f.prioritizedByGsk && <span className="flex items-center gap-1.5 text-xs text-fg-2"><Dot tone="success" />Prioritised by GSK</span>}
-          {f.connector ? (
-            <Tooltip content={`Monitored by ${f.connector.name}`}>
-              <span className="flex items-center gap-1.5 text-xs text-fg-2"><Dot tone={f.connector.lastStatus === "ERROR" ? "danger" : f.connector.lastStatus === "CHANGED" ? "warning" : "info"} />Monitored</span>
-            </Tooltip>
-          ) : null}
-        </div>
-      ),
+      id: "sourceUpdatedAt", header: "Last updated", size: 130,
+      cell: ({ row: { original: f } }) =>
+        f.sourceUpdatedAt ? (
+          <Tooltip content={`Published update date reported by ${f.sourceUpdatedBy}`}>
+            <span className="whitespace-nowrap text-xs text-fg-2">{formatDate(f.sourceUpdatedAt)}</span>
+          </Tooltip>
+        ) : <span className="text-xs text-subtle">—</span>,
     },
-    { id: "updatedAt", header: "Last updated", size: 130, cell: ({ row }) => <span className="whitespace-nowrap text-xs text-muted">{formatDateTime(row.original.updatedAt)}</span> },
     {
       id: "source", header: "Source", enableSorting: false, size: 60,
       cell: ({ row }) => row.original.documentUrl ? (
@@ -104,20 +96,20 @@ export function FrameworkRepository() {
     <Page>
       <PageHeader
         title="Framework Repository"
-        description="Authoritative sources from “ArC Parent Sources (Metadata)”. Version labels and families are derived from the source name. The workbook contains no publication dates."
+        description="Regulatory and standards frameworks in the library. “Last updated” is the publication date reported by the official source where it is monitored."
       />
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
           <div className="relative min-w-[240px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, Source ID or description…" className="pl-8" aria-label="Search frameworks" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by framework name, ID or description…" className="pl-8" aria-label="Search frameworks" />
           </div>
           <Select value={s.type} onChange={(v) => set({ type: v })} allLabel="All categories" options={(facets?.types ?? []).map((f) => ({ value: f.value, label: f.value, hint: f.count }))} aria-label="Category" />
           <Select value={s.group} onChange={(v) => set({ group: v })} allLabel="All groups" options={(facets?.groups ?? []).map((f) => ({ value: f.value, label: f.value, hint: f.count }))} aria-label="Group" />
           <Select value={s.jurisdiction} onChange={(v) => set({ jurisdiction: v })} allLabel="All jurisdictions" options={(facets?.jurisdictions ?? []).map((f) => ({ value: f.value, label: f.value, hint: f.count }))} aria-label="Jurisdiction" />
           {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", type: "", jurisdiction: "", group: "" }); }}><X /> Clear</Button>}
         </div>
-        <div className="px-4 py-2 text-xs text-muted tabular">{rows.length} frameworks · {formatNumber(rows.reduce((n, r) => n + r.citations, 0))} citations</div>
+        <div className="px-4 py-2 text-xs text-muted tabular">{rows.length} frameworks · {formatNumber(rows.reduce((n, r) => n + r.citations, 0))} obligations</div>
         <DataTable
           columns={columns}
           data={data ? rows : undefined}

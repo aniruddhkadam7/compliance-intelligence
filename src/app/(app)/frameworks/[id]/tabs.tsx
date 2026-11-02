@@ -38,8 +38,7 @@ export function FrameworkTabs({ frameworkId, overview }: { frameworkId: string; 
     { id: "controlName", header: "Control", size: 120, enableSorting: false, cell: ({ row }) => <Mono className="font-medium text-fg">{row.original.controlName}</Mono> },
     { id: "title", header: "Common control title", enableSorting: false, cell: ({ row }) => <span className="line-clamp-2 min-w-[320px] text-fg-2">{row.original.title}</span> },
     { id: "category", header: "Category", enableSorting: false, cell: ({ row }) => <span className="whitespace-nowrap text-fg-2">{row.original.category}</span> },
-    { id: "requirements", header: "Via IRs", size: 80, enableSorting: false, cell: ({ row }) => <span className="tabular">{row.original.requirements}</span> },
-    { id: "citations", header: "Citations", size: 90, enableSorting: false, cell: ({ row }) => <span className="tabular">{row.original.citations}</span> },
+    { id: "citations", header: "Obligations", size: 100, enableSorting: false, cell: ({ row }) => <span className="tabular">{row.original.citations}</span> },
   ], []);
 
   const searchBox = (placeholder: string) => (
@@ -55,13 +54,13 @@ export function FrameworkTabs({ frameworkId, overview }: { frameworkId: string; 
     <Tabs value={s.tab} onValueChange={(v) => { setQ(""); set({ tab: v, q: "" }); }}>
       <TabsList className="mb-4">
         <TabsTrigger value="overview"><LayoutGrid /> Overview</TabsTrigger>
-        <TabsTrigger value="citations"><Quote /> Citation records</TabsTrigger>
+        <TabsTrigger value="citations"><Quote /> Regulatory obligations</TabsTrigger>
         <TabsTrigger value="controls"><ShieldCheck /> Mapped controls</TabsTrigger>
       </TabsList>
       <TabsContent value="overview">{overview}</TabsContent>
       <TabsContent value="citations">
         <Card>
-          {searchBox("Search citation ID, section name or requirement…")}
+          {searchBox("Search obligation ID or requirement description…")}
           <CitationTable
             hideFramework
             query={{ frameworkId, q: s.q, page, sort: s.sort, dir: s.dir }}

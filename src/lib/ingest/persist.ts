@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseWorkbook } from "./parse";
 import { normaliseCcfWorkbook, type NormaliseResult } from "./ccf-workbook";
+import { isSourceIdWorkbook, normaliseSourceIdWorkbook } from "./source-id-workbook";
+import type { ParsedWorkbook } from "./parse";
+
+/** Picks the normaliser by workbook structure: source-ID mapping or the legacy CCF workbook. */
+export function normaliseWorkbook(wb: ParsedWorkbook): NormaliseResult {
+  return isSourceIdWorkbook(wb) ? normaliseSourceIdWorkbook(wb) : normaliseCcfWorkbook(wb);
+}
 
 export const sha256 = (buf: Buffer | ArrayBuffer) =>
   createHash("sha256").update(Buffer.from(buf as ArrayBuffer)).digest("hex");
@@ -20,7 +27,7 @@ export interface ImportOutcome {
 
 /** Analyse a workbook without writing reference data. Records a PREVIEWED job. */
 export async function previewCcfWorkbook(db: PrismaClient, file: { name: string; buffer: Buffer }, actor: string) {
-  const result = normaliseCcfWorkbook(parseWorkbook(file.buffer));
+  const result = normaliseWorkbook(parseWorkbook(file.buffer));
   const job = await db.importJob.create({
     data: {
       kind: "CCF_WORKBOOK", fileName: file.name, fileSize: file.buffer.length, fileHash: sha256(file.buffer),
@@ -46,7 +53,7 @@ export async function importCcfWorkbook(
     const prev = await db.importJob.findUnique({ where: { id: opts.previewJobId } });
     if (!prev || prev.fileHash !== fileHash) throw new Error("Uploaded file does not match the previewed file.");
   }
-  const result = normaliseCcfWorkbook(parseWorkbook(file.buffer));
+  const result = normaliseWorkbook(parseWorkbook(file.buffer));
   const blocking = result.issues.filter((i) => i.severity === "ERROR");
 
   const job = opts.previewJobId
@@ -70,6 +77,8 @@ export async function importCcfWorkbook(
   await db.$transaction(
     async (tx) => {
       // Children first; Framework deletion cascades to citations.
+      await tx.controlObligation.deleteMany();
+      await tx.testProcedureObligation.deleteMany();
       await tx.unmappedRequirementReview.deleteMany();
       await tx.controlFrameworkReference.deleteMany();
       await tx.evidenceRequirement.deleteMany();
@@ -105,7 +114,9 @@ export async function importCcfWorkbook(
           data: b.map((c) => ({ ...c, raw: json(c.raw), workingRaw: c.workingRaw ? json(c.workingRaw) : undefined, importJobId: jobId })) as Prisma.CcfControlCreateManyInput[],
         }));
       await chunked(ds.mappings, 1000, (b) => tx.controlRequirementMapping.createMany({ data: b }));
-      await chunked(ds.testProcedures, 500, (b) => tx.testProcedure.createMany({ data: b }));
+      await chunked(ds.testProcedures, 500, (b) => tx.testProcedure.createMany({ data: b.map((t) => ({ ...t, procedureId: t.procedureId ?? null })) }));
+      await chunked(ds.procedureLinks, 1000, (b) => tx.testProcedureObligation.createMany({ data: b }));
+      await chunked(ds.controlObligations, 1000, (b) => tx.controlObligation.createMany({ data: b }));
       await chunked(ds.evidence, 500, (b) => tx.evidenceRequirement.createMany({ data: b }));
       await chunked(ds.frameworkReferences, 1000, (b) => tx.controlFrameworkReference.createMany({ data: b }));
       await chunked(ds.reviews, 500, (b) =>

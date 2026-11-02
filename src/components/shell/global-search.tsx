@@ -16,7 +16,7 @@ interface Hit {
 }
 
 const ICON = { framework: Library, citation: Quote, control: ShieldCheck, requirement: ListTree };
-const GROUP = { framework: "Frameworks", control: "CCF controls", requirement: "Integrated requirements", citation: "Citations" };
+const GROUP = { framework: "Frameworks", control: "CCF controls", requirement: "Requirements", citation: "Regulatory obligations" };
 
 export function GlobalSearch() {
   const navigate = useNavigate();
@@ -64,7 +64,7 @@ export function GlobalSearch() {
           if (e.key === "Enter" && hits[active]) go(hits[active]);
           if (e.key === "Escape") inputRef.current?.blur();
         }}
-        placeholder="Search controls, requirements, citations, frameworks…"
+        placeholder="Search controls, obligations, frameworks…"
         aria-label="Global search"
         className="h-8 w-full rounded-md border border-border bg-surface-2 pl-8 pr-12 text-[13px] placeholder:text-subtle focus:border-accent focus:bg-surface focus:outline-none focus:ring-2 focus:ring-ring"
       />

@@ -3,24 +3,22 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@/components/shell/nav-progress";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Search, X } from "lucide-react";
+import { History, Search, X } from "lucide-react";
 import { Mono, Page, PageHeader } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip } from "@/components/ui/tooltip";
 import { DataTable } from "@/components/data-table";
 import { apiGet, qs } from "@/lib/client/api";
 import { useDebounced, useUrlState } from "@/lib/client/hooks";
-import { formatNumber } from "@/lib/utils";
+import { formatDateTime, formatNumber } from "@/lib/utils";
 
 interface ControlRow {
   id: string; controlName: string; title: string | null; category: string | null; subCategory: string | null; scope: string | null;
   technicalType: string | null; productTeamFacing: string | null;
-  mappings: { mappingType: "PRIMARY" | "SECONDARY"; rawValue: string; requirementId: string | null; requirement: { requirementId: string; name: string | null; _count: { citations: number } } | null }[];
-  _count: { testProcedures: number; evidence: number; frameworkReferences: number };
+  _count: { testProcedures: number; evidence: number; frameworkReferences: number; obligations: number };
 }
 interface Facet { value: string; count: number }
 
@@ -35,6 +33,13 @@ export function ControlRegister() {
   }, [dq]);
   const page = Number(s.page) || 1;
 
+  // Last completed workbook import that loaded these controls.
+  const lastSync = useQuery({
+    queryKey: ["last-ccf-import"],
+    queryFn: () =>
+      apiGet<{ items: { kind: string; status: string; fileName: string; completedAt: string | null }[] }>("/api/import?view=jobs&pageSize=20")
+        .then((r) => r.items.find((j) => j.kind === "CCF_WORKBOOK" && j.status === "COMPLETED") ?? null),
+  });
   const facets = useQuery({ queryKey: ["control-facets"], queryFn: () => apiGet<{ categories: Facet[]; scopes: Facet[]; prefixes: Facet[] }>("/api/controls?view=facets") });
   const list = useQuery({
     queryKey: ["controls", s],
@@ -56,28 +61,8 @@ export function ControlRegister() {
     { id: "category", header: "Category", size: 170, cell: ({ row }) => <span className="text-fg-2">{row.original.category}</span> },
     { id: "scope", header: "Scope", size: 90, cell: ({ row }) => <Badge tone="outline" className="whitespace-nowrap">{row.original.scope}</Badge> },
     {
-      id: "mapping", header: "ArC mapping (IR)", enableSorting: false, size: 220,
-      cell: ({ row }) => (
-        <div className="min-w-[200px] space-y-1">
-          {row.original.mappings.map((m, i) =>
-            m.requirement ? (
-              <div key={i} className="flex items-center gap-1.5 text-xs">
-                <Badge tone={m.mappingType === "PRIMARY" ? "accent" : "outline"}>{m.mappingType === "PRIMARY" ? "P" : "S"}</Badge>
-                <Mono className="text-[11px]">IR {m.requirement.requirementId}</Mono>
-                <span className="truncate text-fg-2">{m.requirement.name?.replace(/^IRM - /, "")}</span>
-              </div>
-            ) : (
-              <Tooltip key={i} content={m.rawValue}>
-                <div className="flex items-center gap-1.5 text-xs"><Badge tone="warning">{m.mappingType === "PRIMARY" ? "P" : "S"}</Badge><span className="truncate text-warning">Unresolved value</span></div>
-              </Tooltip>
-            ),
-          )}
-        </div>
-      ),
-    },
-    {
-      id: "citations", header: "Citations", enableSorting: false, size: 80,
-      cell: ({ row }) => <span className="tabular text-fg-2">{formatNumber(row.original.mappings.reduce((n, m) => n + (m.requirement?._count.citations ?? 0), 0))}</span>,
+      id: "citations", header: "Mapped obligations", enableSorting: false, size: 110,
+      cell: ({ row }) => <span className="tabular text-fg-2">{formatNumber(row.original._count.obligations)}</span>,
     },
     {
       id: "artefacts", header: "Test / evidence", enableSorting: false, size: 110,
@@ -90,13 +75,16 @@ export function ControlRegister() {
     <Page>
       <PageHeader
         title="Internal CCF Mapping"
-        description="GSK Common Control Framework v2 controls from the authoritative “CCFv2 (Metadata)” sheet. Each control maps to ArC integrated requirements, which trace back to framework citations."
+        description="The client's internal controls and the regulatory obligations each one is mapped to."
+        meta={lastSync.data ? (
+          <Badge tone="outline"><History /> Last sync {formatDateTime(lastSync.data.completedAt)} · {lastSync.data.fileName}</Badge>
+        ) : null}
       />
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
           <div className="relative min-w-[240px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search control name, title, statement or IR ID…" className="pl-8" aria-label="Search controls" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search control name, title or statement…" className="pl-8" aria-label="Search controls" />
           </div>
           <Select value={s.category} onChange={(v) => set({ category: v })} allLabel="All categories" options={(facets.data?.categories ?? []).map((f) => ({ value: f.value, label: f.value, hint: f.count }))} triggerClassName="min-w-[180px]" aria-label="Category" />
           <Select value={s.scope} onChange={(v) => set({ scope: v })} allLabel="All scopes" options={(facets.data?.scopes ?? []).map((f) => ({ value: f.value, label: f.value, hint: f.count }))} aria-label="Scope" />
@@ -104,16 +92,15 @@ export function ControlRegister() {
           <Select
             value={s.mapping} onChange={(v) => set({ mapping: v })} allLabel="Any mapping state"
             options={[
-              { value: "mapped", label: "Mapped to an IR" },
-              { value: "secondary", label: "Has secondary mapping" },
-              { value: "unresolved", label: "Unresolved mapping value" },
+              { value: "mapped", label: "Mapped to obligations" },
+              { value: "unmapped", label: "Not mapped" },
               { value: "conflict", label: "Working sheet differs" },
             ]}
             aria-label="Mapping state"
           />
           {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", category: "", scope: "", prefix: "", mapping: "" }); }}><X /> Clear</Button>}
         </div>
-        <div className="px-4 py-2 text-xs text-muted tabular">{list.data ? `${formatNumber(list.data.total)} controls` : "…"} · P = primary “ARC Mapping”, S = “Secondary ArC Mapping”</div>
+        <div className="px-4 py-2 text-xs text-muted tabular">{list.data ? `${formatNumber(list.data.total)} controls` : "…"}</div>
         <DataTable
           columns={columns}
           data={list.data?.items}

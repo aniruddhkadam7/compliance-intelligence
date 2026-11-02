@@ -19,14 +19,9 @@ const plural = (n: number, noun: string) => `${formatNumber(n)} ${noun}${n === 1
 
 const OPTIONS: { scope: Scope; title: string; detail: (c: Counts) => string; note: string }[] = [
   {
-    scope: "reference", title: "CCF workbook data",
-    detail: (c) => `${formatNumber(c.frameworks)} frameworks · ${formatNumber(c.citations)} citations · ${formatNumber(c.requirements)} IRs · ${formatNumber(c.controls)} controls, plus their mappings, test procedures, evidence and review sheets`,
+    scope: "reference", title: "Framework and control data",
+    detail: (c) => `${formatNumber(c.frameworks)} frameworks · ${formatNumber(c.citations)} obligations · ${formatNumber(c.controls)} controls, plus their mappings, test procedures, evidence and review sheets`,
     note: "Pages show empty states until a workbook is imported again.",
-  },
-  {
-    scope: "transitions", title: "Version transition rows",
-    detail: (c) => `${plural(c.transitions, "row")} from transition workbooks`,
-    note: "Version Impact keeps showing comparisons derived from the CCF workbook.",
   },
   {
     scope: "connectors", title: "Connector history",

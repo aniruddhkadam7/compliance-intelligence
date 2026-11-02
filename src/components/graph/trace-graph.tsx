@@ -26,7 +26,7 @@ const COLUMN: Record<TraceKind, number> = { framework: 0, citation: 1, more: 1, 
 const COL_X = [0, 290, 590, 890];
 const ROW_H = 64;
 const ICON = { framework: Library, citation: Quote, more: Quote, requirement: ListTree, control: ShieldCheck };
-const KIND_LABEL = { framework: "Framework", citation: "Citation", more: "Citations", requirement: "Integrated requirement", control: "CCF control" };
+const KIND_LABEL = { framework: "Framework", citation: "Obligation", more: "Obligations", requirement: "Requirement", control: "CCF control" };
 
 type FlowData = TraceNode & Record<string, unknown>;
 
@@ -58,8 +58,10 @@ const nodeTypes = { trace: TraceNodeView };
 export function TraceGraph({ nodes, edges, height = 520 }: { nodes: TraceNode[]; edges: TraceEdge[]; height?: number }) {
   const navigate = useNavigate();
   const flow = useMemo(() => {
-    const cols: TraceNode[][] = [[], [], [], []];
-    nodes.forEach((n) => cols[COLUMN[n.kind]].push(n));
+    // Columns without nodes are dropped so the graph stays compact.
+    const byCol: TraceNode[][] = [[], [], [], []];
+    nodes.forEach((n) => byCol[COLUMN[n.kind]].push(n));
+    const cols = byCol.filter((c) => c.length > 0);
     const maxRows = Math.max(...cols.map((c) => c.length), 1);
     const rf: Node<FlowData>[] = [];
     cols.forEach((col, ci) => {
@@ -97,7 +99,7 @@ export function TraceGraph({ nodes, edges, height = 520 }: { nodes: TraceNode[];
 export function GraphLegend() {
   return (
     <div className="flex flex-wrap items-center gap-4 text-[11px] text-muted">
-      {(["framework", "citation", "requirement", "control"] as const).map((k, i) => {
+      {(["framework", "citation", "control"] as const).map((k, i) => {
         const Icon = ICON[k];
         return (
           <span key={k} className="flex items-center gap-1.5">

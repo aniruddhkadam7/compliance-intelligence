@@ -9,7 +9,18 @@ export const FrameworkFilters = z.object({
   group: z.string().max(80).optional().default(""),
 });
 
-/** Full repository list (27 rows — small enough to return in one response). */
+/**
+ * Publication date reported by the official source in a connector's latest successful check:
+ * catalogue/document "last modified", or the date of the latest consolidated legal text.
+ */
+function sourceDate(details: unknown): Date | null {
+  const d = (details ?? {}) as { lastModified?: string; latestConsolidated?: { date?: string | null } | null };
+  const raw = d.latestConsolidated?.date ?? d.lastModified ?? null;
+  const date = raw ? new Date(raw) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+}
+
+/** Full repository list (small enough to return in one response). */
 export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
   const rows = await prisma.framework.findMany({
     where: {
@@ -25,18 +36,20 @@ export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
         ],
       }),
     },
-    include: { _count: { select: { citations: true } }, connectors: { select: { id: true, name: true, lastStatus: true, lastCheckedAt: true } } },
+    include: {
+      _count: { select: { citations: true } },
+      connectors: { select: { name: true, checks: { where: { status: { not: "ERROR" } }, orderBy: { checkedAt: "desc" }, take: 10, select: { details: true } } } },
+    },
     orderBy: { name: "asc" },
   });
-  const reqCounts = await prisma.$queryRaw<{ id: string; requirements: bigint; controls: bigint }[]>`
-    SELECT c."frameworkId" AS id, COUNT(DISTINCT rc."requirementId") AS requirements,
-      COUNT(DISTINCT m."controlId") AS controls
-    FROM "Citation" c
-    JOIN "RequirementCitation" rc ON rc."citationId" = c.id
-    LEFT JOIN "ControlRequirementMapping" m ON m."requirementId" = rc."requirementId" AND m.authoritative
-    GROUP BY c."frameworkId"`;
-  const byId = new Map(reqCounts.map((r) => [r.id, r]));
-  return rows.map((r) => ({
+
+  return rows.map((r) => {
+    const reported = r.connectors
+      // "Not modified" checks carry no details, so use the latest check that reported a date.
+      .map((c) => ({ by: c.name, date: c.checks.map((k) => sourceDate(k.details)).find(Boolean) ?? null }))
+      .filter((x): x is { by: string; date: Date } => !!x.date)
+      .sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+    return {
     id: r.id,
     sourceId: r.sourceId,
     name: r.name,
@@ -49,12 +62,11 @@ export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
     licensing: r.licensing,
     documentUrl: r.documentUrl,
     prioritizedByGsk: r.prioritizedByGsk,
-    updatedAt: r.updatedAt,
     citations: r._count.citations,
-    requirements: Number(byId.get(r.id)?.requirements ?? 0),
-    controls: Number(byId.get(r.id)?.controls ?? 0),
-    connector: r.connectors[0] ?? null,
-  }));
+    sourceUpdatedAt: reported?.date ?? null,
+    sourceUpdatedBy: reported?.by ?? null,
+    };
+  });
 }
 
 export async function frameworkFacets() {
@@ -86,25 +98,11 @@ export async function getFramework(id: string) {
     FROM "Citation" c WHERE c."frameworkId" = ${fw.id}
     GROUP BY 1 ORDER BY 2 DESC LIMIT 40`;
 
-  // Related frameworks: sources whose citations share integrated requirements with this one.
-  const related = await prisma.$queryRaw<{ id: string; name: string; shared: bigint }[]>`
-    WITH mine AS (
-      SELECT DISTINCT rc."requirementId" FROM "Citation" c JOIN "RequirementCitation" rc ON rc."citationId" = c.id WHERE c."frameworkId" = ${fw.id}
-    )
-    SELECT f.id, f.name, COUNT(DISTINCT rc."requirementId") AS shared
-    FROM "Citation" c
-    JOIN "RequirementCitation" rc ON rc."citationId" = c.id
-    JOIN mine ON mine."requirementId" = rc."requirementId"
-    JOIN "Framework" f ON f.id = c."frameworkId"
-    WHERE c."frameworkId" <> ${fw.id}
-    GROUP BY f.id ORDER BY shared DESC`;
-
-  const totals = await prisma.$queryRaw<{ requirements: bigint; mapped: bigint; controls: bigint }[]>`
-    SELECT COUNT(DISTINCT rc."requirementId") AS requirements,
-      COUNT(DISTINCT rc."requirementId") FILTER (WHERE m.id IS NOT NULL) AS mapped,
+  const totals = await prisma.$queryRaw<{ mapped: bigint; controls: bigint }[]>`
+    SELECT COUNT(DISTINCT c.id) FILTER (WHERE m.id IS NOT NULL) AS mapped,
       COUNT(DISTINCT m."controlId") AS controls
-    FROM "Citation" c JOIN "RequirementCitation" rc ON rc."citationId" = c.id
-    LEFT JOIN "ControlRequirementMapping" m ON m."requirementId" = rc."requirementId" AND m.authoritative
+    FROM "Citation" c
+    LEFT JOIN "ControlObligation" m ON m."citationId" = c.id
     WHERE c."frameworkId" = ${fw.id}`;
 
   return {
@@ -112,8 +110,7 @@ export async function getFramework(id: string) {
     short: shortName(fw.name),
     versions: versions.map((v) => ({ ...v, short: shortName(v.name), citations: v._count.citations })),
     sections: sections.map((s) => ({ section: s.section || "(source root)", citations: Number(s.citations) })),
-    related: related.map((r) => ({ id: r.id, name: r.name, short: shortName(r.name), shared: Number(r.shared) })),
-    totals: { requirements: Number(totals[0]?.requirements ?? 0), mapped: Number(totals[0]?.mapped ?? 0), controls: Number(totals[0]?.controls ?? 0) },
+    totals: { mapped: Number(totals[0]?.mapped ?? 0), controls: Number(totals[0]?.controls ?? 0) },
   };
 }
 
@@ -122,10 +119,9 @@ export async function frameworkControls(frameworkId: string, p: { page: number; 
   const q = `%${p.q}%`;
   const rows = await prisma.$queryRaw<{ id: string; controlName: string; title: string | null; category: string | null; requirements: bigint; citations: bigint; total: bigint }[]>`
     SELECT k.id, k."controlName", k.title, k.category,
-      COUNT(DISTINCT m."requirementId") AS requirements, COUNT(DISTINCT c.id) AS citations, COUNT(*) OVER() AS total
+      0::bigint AS requirements, COUNT(DISTINCT c.id) AS citations, COUNT(*) OVER() AS total
     FROM "Citation" c
-    JOIN "RequirementCitation" rc ON rc."citationId" = c.id
-    JOIN "ControlRequirementMapping" m ON m."requirementId" = rc."requirementId" AND m.authoritative
+    JOIN "ControlObligation" m ON m."citationId" = c.id
     JOIN "CcfControl" k ON k.id = m."controlId"
     WHERE c."frameworkId" = ${frameworkId}
       AND (${p.q} = '' OR k."controlName" ILIKE ${q} OR k.title ILIKE ${q} OR k.category ILIKE ${q})

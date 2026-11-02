@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  Activity, AlertTriangle, CheckCircle2, Clock, DatabaseZap, FileWarning, Info, Library, ListTree, Quote, RadioTower, ShieldCheck,
+  Activity, AlertTriangle, CheckCircle2, Clock, DatabaseZap, FileWarning, Info, Library, Quote, RadioTower, ShieldCheck,
 } from "lucide-react";
 import { Page, PageHeader, StatStrip, EmptyState } from "@/components/common";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -26,7 +26,7 @@ export default async function OverviewPage() {
           <EmptyState
             icon={DatabaseZap}
             title="No workbook imported yet"
-            description="Import the CCF demonstration workbook to populate frameworks, citations, integrated requirements and CCF controls."
+            description="Import a workbook to populate frameworks, regulatory obligations and CCF controls."
             action={<Button asChild variant="primary"><Link href="/data">Go to Data & Imports</Link></Button>}
           />
         </Card>
@@ -34,10 +34,10 @@ export default async function OverviewPage() {
     );
   }
 
-  const coverage = t.prioritized ? t.mappedPrioritized / t.prioritized : 0;
+  const coverage = t.obligations ? t.mappedObligations / t.obligations : 0;
   const coverageRows = d.perFramework
-    .filter((f) => f.requirements > 0)
-    .map((f) => ({ id: f.id, short: f.short, mapped: f.mappedRequirements, unmapped: f.requirements - f.mappedRequirements, total: f.requirements }))
+    .filter((f) => f.obligations > 0)
+    .map((f) => ({ id: f.id, short: f.short, mapped: f.mapped, unmapped: f.obligations - f.mapped, total: f.obligations }))
     .sort((a, b) => b.total - a.total);
   const errors = d.dataQuality.filter((q) => q.severity === "ERROR").reduce((n, q) => n + q.count, 0);
   const warnings = d.dataQuality.filter((q) => q.severity === "WARNING").reduce((n, q) => n + q.count, 0);
@@ -58,19 +58,18 @@ export default async function OverviewPage() {
       />
 
       <StatStrip
-        className="mb-4"
+        className="mb-4 xl:grid-cols-7"
         items={[
-          { label: "Frameworks", value: t.frameworks, sub: "ArC authoritative sources", href: "/frameworks", icon: Library },
-          { label: "Citations", value: t.citations, sub: "Source sections", href: "/citations", icon: Quote },
-          { label: "CCF controls", value: t.controls, sub: `${formatNumber(t.controlsMapped)} linked to an IR`, href: "/controls", icon: ShieldCheck },
-          { label: "Integrated requirements", value: t.requirements, sub: `${formatNumber(t.prioritized)} in prioritised sources`, icon: ListTree },
+          { label: "Frameworks", value: t.frameworks, sub: "Regulatory and standards sources", href: "/frameworks", icon: Library },
+          { label: "Regulatory obligations", value: t.obligations, sub: "Legal and regulatory requirements", href: "/citations", icon: Quote },
+          { label: "CCF controls", value: t.controls, sub: `${formatNumber(t.controlsMapped)} mapped to obligations`, href: "/controls", icon: ShieldCheck },
           {
-            label: "Mapping coverage", value: formatPercent(coverage), tone: "accent", sub: `${t.mappedPrioritized} of ${t.prioritized} prioritised IRs`,
-            hint: "Prioritised IRs that are the primary ArC mapping of at least one CCF control (authoritative sheet), divided by all prioritised IRs. Matches the workbook's “Count in CCF v2 Mapping?”.",
+            label: "Mapping coverage", value: formatPercent(coverage), tone: "accent", sub: `${formatNumber(t.mappedObligations)} of ${formatNumber(t.obligations)} obligations`,
+            hint: "Regulatory obligations with at least one mapped CCF control, divided by all obligations.",
           },
           {
-            label: "Unmapped requirements", value: t.unmappedPrioritized, tone: t.unmappedPrioritized ? "warning" : "success", sub: "Prioritised IRs without a control",
-            href: "/mappings?tab=unmapped", hint: "Prioritised IRs with no authoritative CCF mapping. These match the workbook's “Unmapped IRs” review sheets.",
+            label: "Unmapped obligations", value: t.unmappedObligations, tone: t.unmappedObligations ? "warning" : "success", sub: "No CCF control mapped",
+            href: "/citations?mapped=no", hint: "Regulatory obligations with no CCF control mapped to them.",
           },
           { label: "Updates to review", value: t.newUpdates, tone: t.newUpdates ? "warning" : "default", sub: "Detected by connectors", href: "/updates", icon: RadioTower },
           { label: "Last synchronisation", value: <span className="text-[15px]">{d.lastSync ? formatRelative(d.lastSync) : "—"}</span>, sub: d.lastSync ? formatDateTime(d.lastSync) : "No connector has run", href: "/updates" },
@@ -79,21 +78,20 @@ export default async function OverviewPage() {
 
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
-          <CardHeader title="Citations by framework" description="Number of source sections per authoritative source. Select a label to open the framework." />
+          <CardHeader title="Regulatory obligations by framework" description="Number of obligations per framework. Select a label to open the framework." />
           <CardBody className="pt-3">
-            <RankedBars data={d.perFramework.map((f) => ({ ...f, href: `/frameworks/${f.id}` }))} valueKey="citations" labelKey="short" valueLabel="Citations" hrefKey="href" />
+            <RankedBars data={d.perFramework.map((f) => ({ ...f, href: `/frameworks/${f.id}` }))} valueKey="obligations" labelKey="short" valueLabel="Obligations" hrefKey="href" />
           </CardBody>
         </Card>
 
         <div className="flex flex-col gap-4">
           <Card>
-            <CardHeader title="Mapping coverage" description="Prioritised integrated requirements traced to a CCF control" />
+            <CardHeader title="Mapping coverage" description="Regulatory obligations with a mapped CCF control" />
             <CardBody>
-              <Meter value={t.mappedPrioritized} total={t.prioritized} label="Primary “ARC Mapping” values on the authoritative “CCFv2 (Metadata)” sheet" />
-              <div className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-3 text-xs">
-                <div><div className="text-muted">Unmapped</div><div className="mt-0.5 text-[15px] font-semibold tabular text-warning">{t.unmappedPrioritized}</div></div>
-                <div><div className="text-muted">of which secondary only</div><div className="mt-0.5 text-[15px] font-semibold tabular">{t.secondaryOnlyPrioritized}</div></div>
-                <div><div className="text-muted">IRs outside prioritised sources</div><div className="mt-0.5 text-[15px] font-semibold tabular">{t.notInPrioritized}</div></div>
+              <Meter value={t.mappedObligations} total={t.obligations} label="Obligations linked to at least one CCF control" />
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-3 text-xs">
+                <div><div className="text-muted">Mapped obligations</div><div className="mt-0.5 text-[15px] font-semibold tabular">{formatNumber(t.mappedObligations)}</div></div>
+                <div><div className="text-muted">Unmapped obligations</div><div className="mt-0.5 text-[15px] font-semibold tabular text-warning">{formatNumber(t.unmappedObligations)}</div></div>
               </div>
             </CardBody>
           </Card>
@@ -110,8 +108,8 @@ export default async function OverviewPage() {
 
         <Card className="xl:col-span-2">
           <CardHeader
-            title="Requirement coverage by framework"
-            description="For each source: the integrated requirements its citations map to, split by whether a CCF control is mapped to that requirement."
+            title="Mapping coverage by framework"
+            description="For each framework: its regulatory obligations, split by whether a CCF control is mapped."
           />
           <CardBody className="pt-3"><CoverageBars data={coverageRows} /></CardBody>
         </Card>

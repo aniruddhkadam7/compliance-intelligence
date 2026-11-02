@@ -7,7 +7,6 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { CitationTable, useCitations } from "@/components/citations/citation-table";
 import { CitationDetailSheet } from "@/components/citations/citation-detail";
 import { apiGet } from "@/lib/client/api";
@@ -21,10 +20,9 @@ interface Facets {
 
 const FIELDS = [
   { value: "all", label: "All fields" },
-  { value: "sectionId", label: "Citation / section ID" },
-  { value: "sectionName", label: "Section name" },
-  { value: "requirement", label: "Requirement (ID or name)" },
-  { value: "text", label: "Section text (full text)" },
+  { value: "sectionId", label: "Obligation ID" },
+  { value: "sectionName", label: "Requirement description" },
+  { value: "text", label: "Full requirement text" },
 ];
 
 export function CitationExplorer() {
@@ -47,14 +45,14 @@ export function CitationExplorer() {
   return (
     <Page>
       <PageHeader
-        title="Citation Explorer"
-        description="Search the 27 authoritative sources at section level. A citation is a source section (ArC “Source Section ID”). It is linked to an integrated requirement, which is mapped to CCF controls."
+        title="Obligation Explorer"
+        description="Search regulatory and legal obligations across all frameworks, and see which CCF controls each one maps to."
       />
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
           <div className="relative min-w-[260px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search citation ID, section ID, section name, requirement…" className="pl-8" aria-label="Search citations" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search obligation ID or requirement description…" className="pl-8" aria-label="Search obligations" />
           </div>
           <Select value={s.field} onChange={(v) => set({ field: v })} options={FIELDS} aria-label="Search field" />
           <Select
@@ -75,7 +73,7 @@ export function CitationExplorer() {
           )}
           <Select
             value={s.mapped} onChange={(v) => set({ mapped: v })} allLabel="Any mapping status"
-            options={[{ value: "yes", label: "Requirement has CCF control" }, { value: "no", label: "Requirement without CCF control" }]}
+            options={[{ value: "yes", label: "Mapped to a CCF control" }, { value: "no", label: "Not mapped to a control" }]}
             aria-label="Mapping status"
           />
           {active && (
@@ -85,8 +83,7 @@ export function CitationExplorer() {
           )}
         </div>
         <div className="flex items-center gap-2 px-4 py-2 text-xs text-muted">
-          <span className="tabular">{data ? `${formatNumber(data.total)} citations` : "…"}</span>
-          {s.requirementId && <Badge tone="info">IR {s.requirementId} <button onClick={() => set({ requirementId: "" })} aria-label="Remove requirement filter"><X /></button></Badge>}
+          <span className="tabular">{data ? `${formatNumber(data.total)} obligations` : "…"}</span>
         </div>
         <CitationTable
           query={query}

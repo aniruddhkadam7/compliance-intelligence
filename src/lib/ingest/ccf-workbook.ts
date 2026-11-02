@@ -26,6 +26,9 @@ export type SheetRole =
   | "METRICS"
   | "IR_ID_LIST"
   | "UNMAPPED_REVIEW"
+  | "PROCEDURE_MAP"
+  | "SOURCE_LIST"
+  | "SOURCE_METADATA"
   | "UNRECOGNISED";
 
 const REQUIRED: Record<string, string[]> = {
@@ -73,7 +76,7 @@ export interface SheetSummary {
   preview: RawRow[];
 }
 
-const id = () => randomUUID();
+export const id = () => randomUUID();
 const asBool = (v: string | null) => (v === null ? null : /^y(es)?$/i.test(v));
 const isReqId = (v: string | null): v is string => !!v && /^\d+$/.test(v);
 
@@ -91,7 +94,7 @@ export function sheetRole(name: string): SheetRole {
 }
 
 /** Accessor bound to one sheet: reads a column by normalised header name. */
-function reader(sheet: ParsedSheet) {
+export function reader(sheet: ParsedSheet) {
   const cache = new Map<string, string | undefined>();
   const col = (name: string, prefix = false) => {
     const key = (prefix ? "p:" : "e:") + name;
@@ -131,6 +134,24 @@ function truncateRow(row: RawRow, max = 160): RawRow {
 
 // ---------------------------------------------------------------------------
 
+/** Control attributes read by header name; shared by every workbook format. */
+export function controlFields(get: (header: string) => string | null) {
+  return {
+    scope: get("Scope (GRC/CSO/OT/DCJ)"), coverageInIsms: get("Coverage in ISMS Standards"),
+    category: get("Control Categories"), subCategory: get("Control Sub Category"),
+    title: get("Common Control Title"), objective: get("Control Objective"),
+    activityStatementV1: get("Control Activity Statement (CCFv1.0)"), activityStatementV2: get("Control Activity Statement (CCFv2.0)"),
+    monitoringStatements: get("Monitoring Statements"), technicalType: get("Technical/Non-technical Control"),
+    standardsControlMapping: get("Standards Control Mapping (CCFv2.0)"), productImplementation: get("Product Implementation Guidance"),
+    mappedIsmsSubControls: get("Mapped ISMS Standard Sub-Controls"), productTeamFacing: get("Product Team Facing? (CCFv2.0)"),
+    orgLevel: get("Org. Level/Product Level (Proposed) v2.0"), arcActivityStatement: get("ArC Activity Statement"),
+    monitoringCriteria: get("Monitoring criteria"), toolsDocuments: get("Tools/Documents (CCF V2)"),
+    relatedGskStandard: get("Related GSK Standard"), gskAssignee: get("GSK Assignee"),
+    gskComments: get("GSK Comments"), teamComments: get("Team Comments"), notes: get("Notes / Comments / Feedback"),
+    arcRiskStatement: get("ArC Mapping Risk Statement"), arcRiskObjective: get("ArC Mapping Risk Objective"),
+  };
+}
+
 export interface NormalisedDataset {
   frameworks: {
     id: string; sourceId: string; name: string; description: string | null; group: string | null; type: string | null;
@@ -152,7 +173,11 @@ export interface NormalisedDataset {
     id: string; controlId: string; requirementId: string | null; mappingType: "PRIMARY" | "SECONDARY"; rawValue: string;
     authoritative: boolean; sourceSheet: string; sourceColumn: string;
   }[];
-  testProcedures: { id: string; controlId: string; kind: string; text: string; sourceSheet: string; sourceColumn: string }[];
+  testProcedures: { id: string; controlId: string; kind: string; procedureId?: string | null; text: string; sourceSheet: string; sourceColumn: string }[];
+  /** Test procedure -> obligation links (source-ID workbooks). */
+  procedureLinks: { id: string; testProcedureId: string; citationId: string }[];
+  /** Control -> obligation: the mapping every screen reads. */
+  controlObligations: { id: string; controlId: string; citationId: string; mappingType: string }[];
   evidence: { id: string; controlId: string; kind: string; text: string; sourceSheet: string; sourceColumn: string }[];
   frameworkReferences: { id: string; controlId: string; columnName: string; referenceRaw: string; tokens: string[]; sourceSheet: string }[];
   reviews: { id: string; requirementId: string; sheetName: string; raw: RawRow; sourceRow: number }[];
@@ -166,14 +191,14 @@ export interface NormaliseResult {
 }
 
 /** "Blank-ish" placeholders that the workbook uses for "no value". */
-const isPlaceholder = (v: string | null) => !v || /^(na|n\/a|0|-|nil)$/i.test(v.trim());
+export const isPlaceholder = (v: string | null) => !v || /^(na|n\/a|0|-|nil)$/i.test(v.trim());
 
 export function normaliseCcfWorkbook(wb: ParsedWorkbook): NormaliseResult {
   const issues: Issue[] = [];
   const sheets = summariseSheets(wb);
   const ds: NormalisedDataset = {
     frameworks: [], requirements: [], citations: [], requirementCitations: [], controls: [], mappings: [],
-    testProcedures: [], evidence: [], frameworkReferences: [], reviews: [],
+    testProcedures: [], evidence: [], frameworkReferences: [], reviews: [], procedureLinks: [], controlObligations: [],
   };
 
   for (const s of sheets) {
@@ -310,19 +335,8 @@ export function normaliseCcfWorkbook(wb: ParsedWorkbook): NormaliseResult {
     const w = working?.values;
     const cid = id();
     ds.controls.push({
-      id: cid, controlName, domainPrefix: controlName.replace(/-\d+$/, ""),
-      scope: rk.get(values, "Scope (GRC/CSO/OT/DCJ)"), coverageInIsms: rk.get(values, "Coverage in ISMS Standards"),
-      category: rk.get(values, "Control Categories"), subCategory: rk.get(values, "Control Sub Category"),
-      title: rk.get(values, "Common Control Title"), objective: rk.get(values, "Control Objective"),
-      activityStatementV1: rk.get(values, "Control Activity Statement (CCFv1.0)"), activityStatementV2: rk.get(values, "Control Activity Statement (CCFv2.0)"),
-      monitoringStatements: rk.get(values, "Monitoring Statements"), technicalType: rk.get(values, "Technical/Non-technical Control"),
-      standardsControlMapping: rk.get(values, "Standards Control Mapping (CCFv2.0)"), productImplementation: rk.get(values, "Product Implementation Guidance"),
-      mappedIsmsSubControls: rk.get(values, "Mapped ISMS Standard Sub-Controls"), productTeamFacing: rk.get(values, "Product Team Facing? (CCFv2.0)"),
-      orgLevel: rk.get(values, "Org. Level/Product Level (Proposed) v2.0"), arcActivityStatement: rk.get(values, "ArC Activity Statement"),
-      monitoringCriteria: rk.get(values, "Monitoring criteria"), toolsDocuments: rk.get(values, "Tools/Documents (CCF V2)"),
-      relatedGskStandard: rk.get(values, "Related GSK Standard"), gskAssignee: rk.get(values, "GSK Assignee"),
-      gskComments: rk.get(values, "GSK Comments"), teamComments: rk.get(values, "Team Comments"), notes: rk.get(values, "Notes / Comments / Feedback"),
-      arcRiskStatement: rk.get(values, "ArC Mapping Risk Statement"), arcRiskObjective: rk.get(values, "ArC Mapping Risk Objective"),
+      id: cid, controlName, domainPrefix: controlName.replace(/-d+$/, ""),
+      ...controlFields((h) => rk.get(values, h)),
       gskReviewStatus: w ? rw.get(w, "GSK Ready for Review?") : null, gskApproval: w ? rw.get(w, "GSK Approved OR To Discuss") : null,
       raw: values, workingRaw: w ?? null, sourceSheet: ctlSheet.name, sourceRow: rowNumber,
     });
@@ -469,6 +483,18 @@ export function normaliseCcfWorkbook(wb: ParsedWorkbook): NormaliseResult {
   const unmapped = ds.requirements.filter((r) => r.foundInPrioritized && !primaryCountByReq.get(r.requirementId)).length;
   issues.push({ severity: "INFO", code: "UNMAPPED_REQUIREMENTS", sheet: SHEETS.requirements, message: `${unmapped} IRs found in prioritised sources have no authoritative CCF control mapping.` });
 
+  // Resolve control -> obligation links from the authoritative mapping columns (primary wins over secondary).
+  const citationsByRequirement = new Map<string, string[]>();
+  for (const rc of ds.requirementCitations) citationsByRequirement.set(rc.requirementId, [...(citationsByRequirement.get(rc.requirementId) ?? []), rc.citationId]);
+  const links = new Map<string, NormalisedDataset["controlObligations"][number]>();
+  for (const m of ds.mappings.filter((x) => x.authoritative && x.requirementId).sort((a, b) => (a.mappingType === b.mappingType ? 0 : a.mappingType === "PRIMARY" ? -1 : 1))) {
+    for (const citationId of citationsByRequirement.get(m.requirementId!) ?? []) {
+      const key = `${m.controlId}|${citationId}`;
+      if (!links.has(key)) links.set(key, { id: id(), controlId: m.controlId, citationId, mappingType: m.mappingType });
+    }
+  }
+  ds.controlObligations = [...links.values()];
+
   const counts = {
     frameworks: ds.frameworks.length,
     citations: ds.citations.length,
@@ -481,6 +507,7 @@ export function normaliseCcfWorkbook(wb: ParsedWorkbook): NormaliseResult {
     evidence: ds.evidence.length,
     frameworkReferences: ds.frameworkReferences.length,
     reviews: ds.reviews.length,
+    controlObligations: ds.controlObligations.length,
   };
   return { dataset: ds, issues, sheets, counts };
 }

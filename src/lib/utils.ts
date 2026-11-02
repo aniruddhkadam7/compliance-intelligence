@@ -14,6 +14,12 @@ export function formatDateTime(d: Date | string | null | undefined) {
   return new Date(d).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+export function formatDate(d: Date | string | null | undefined) {
+  if (!d) return "—";
+  const date = new Date(d);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export function formatRelative(d: Date | string | null | undefined) {
   if (!d) return "Never";
   const m = Math.round((Date.now() - new Date(d).getTime()) / 60000);

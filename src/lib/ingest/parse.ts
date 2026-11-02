@@ -57,10 +57,14 @@ export function parseWorkbook(buffer: ArrayBuffer | Buffer, minHeaderCells = 2):
       }
     }
 
+    // Column letters are reported relative to the sheet, which may not start at column A.
+    const firstCol = ws["!ref"] ? XLSX.utils.decode_range(ws["!ref"]).s.c : 0;
     const headers: string[] = [];
     for (let c = 0; c < width; c++) {
       const h = headerIdx >= 0 ? cellToString(matrix[headerIdx][c]) : null;
-      headers.push(h ?? unlabelledHeader(c));
+      // A repeated header would overwrite the earlier column's values; keep both.
+      const name = h ?? unlabelledHeader(firstCol + c);
+      headers.push(headers.includes(name) ? `${name} (column ${XLSX.utils.encode_col(firstCol + c)})` : name);
     }
 
     const rows: ParsedSheet["rows"] = [];

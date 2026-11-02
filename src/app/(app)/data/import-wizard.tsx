@@ -23,13 +23,15 @@ interface Preview {
 }
 
 const ROLE_LABEL: Record<string, string> = {
-  SOURCES: "Frameworks", CITATIONS: "Citations", REQUIREMENTS: "Integrated requirements", CONTROLS: "CCF controls (authoritative)",
-  CONTROLS_WORKING: "CCF working sheet", METRICS: "Validation only", IR_ID_LIST: "Validation only", UNMAPPED_REVIEW: "Unmapped IR review", UNRECOGNISED: "Not imported",
+  SOURCES: "Frameworks", CITATIONS: "Regulatory obligations", REQUIREMENTS: "Mapping groups", CONTROLS: "CCF controls (authoritative)",
+  CONTROLS_WORKING: "CCF working sheet", METRICS: "Validation only", IR_ID_LIST: "Validation only", UNMAPPED_REVIEW: "Unmapped review", UNRECOGNISED: "Not imported",
+  PROCEDURE_MAP: "Test procedure mapping", SOURCE_LIST: "Framework list (checked)", SOURCE_METADATA: "Framework details",
 };
 const COUNT_LABEL: Record<string, string> = {
-  frameworks: "Frameworks", citations: "Citations", citationLinks: "Citation → IR links", requirements: "Integrated requirements", controls: "CCF controls",
-  mappings: "Control → IR mappings (both sheets)", authoritativeMappings: "Authoritative mappings", testProcedures: "Test procedures", evidence: "Evidence statements",
-  frameworkReferences: "Framework references", reviews: "Unmapped IR review rows", rows: "Transition rows",
+  frameworks: "Frameworks", citations: "Regulatory obligations", citationLinks: "Obligation links", requirements: "Mapping groups", controls: "CCF controls",
+  mappings: "Control mappings (both sheets)", authoritativeMappings: "Authoritative mappings", testProcedures: "Test procedures", evidence: "Evidence statements",
+  frameworkReferences: "Framework references", reviews: "Unmapped review rows", rows: "Transition rows",
+  procedureLinks: "Test procedure → obligation links", controlObligations: "Control → obligation mappings",
 };
 
 export function ImportWizard() {
@@ -100,10 +102,9 @@ export function ImportWizard() {
       <Card>
         <CardHeader title="1. Choose workbook type and file" description="Accepted: .xlsx, up to 4 MB (Vercel request limit). The original file is never modified." />
         <CardBody className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2">
             {([
-              ["ccf", "CCF demonstration workbook", "Frameworks, citations, integrated requirements, CCF controls and review sheets. Replaces current reference data."],
-              ["transition", "Version transition workbook", "Framework transition examples (e.g. NIST CSF 1.1 → 2.0 Govern) with test procedure and evidence changes. Added to the Version Impact module."],
+              ["ccf", "Framework and control workbook", "Frameworks, regulatory obligations, CCF controls and their mappings. Replaces the current data."],
             ] as const).map(([k, title, desc]) => (
               <button
                 key={k}
@@ -239,7 +240,7 @@ export function ImportWizard() {
         title={kind === "ccf" ? "Replace reference data?" : "Import transition rows?"}
         description={
           kind === "ccf"
-            ? "All frameworks, citations, integrated requirements, CCF controls and review rows will be replaced by this workbook in one transaction. Connector history, framework update reviews and the audit log are kept."
+            ? "All frameworks, regulatory obligations, CCF controls and their mappings will be replaced by this workbook in one transaction. Connector history, framework update reviews and the audit log are kept."
             : "Transition rows are added to the Version Impact module. They do not change CCF mappings."
         }
         footer={<><Button onClick={() => setConfirmOpen(false)}>Cancel</Button><Button variant="primary" onClick={confirm}>Import {file?.name}</Button></>}

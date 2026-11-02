@@ -60,8 +60,10 @@ model Citation {
   importJobId     String?
   createdAt       DateTime @default(now())
 
-  framework    Framework             @relation(fields: [frameworkId], references: [id], onDelete: Cascade)
+  framework    Framework                 @relation(fields: [frameworkId], references: [id], onDelete: Cascade)
   requirements RequirementCitation[]
+  controls     ControlObligation[]
+  procedures   TestProcedureObligation[]
 
   @@index([frameworkId])
   @@index([sectionName])
@@ -148,6 +150,7 @@ model CcfControl {
   updatedAt                 DateTime @updatedAt
 
   mappings            ControlRequirementMapping[]
+  obligations         ControlObligation[]
   testProcedures      TestProcedure[]
   evidence            EvidenceRequirement[]
   frameworkReferences ControlFrameworkReference[]
@@ -184,16 +187,49 @@ model ControlRequirementMapping {
 }
 
 model TestProcedure {
-  id           String @id @default(cuid())
+  id           String  @id @default(cuid())
   controlId    String
-  kind         String /// e.g. CCF_V2, CCF_V1, ARC_WITHOUT_CITATIONS, ARC_WITH_CITATIONS
+  kind         String /// e.g. PROCEDURE, CCF_V2, CCF_V1, ARC_WITHOUT_CITATIONS, ARC_WITH_CITATIONS
+  /// Test procedure identifier from the mapping sheet, e.g. "AM-CCF-1:TP2".
+  procedureId  String?
   text         String
   sourceSheet  String
   sourceColumn String
 
-  control CcfControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  control     CcfControl                @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  obligations TestProcedureObligation[]
 
   @@index([controlId])
+}
+
+/// Test procedure -> obligation (source section) it tests, from the mapping sheet.
+model TestProcedureObligation {
+  id              String @id @default(cuid())
+  testProcedureId String
+  citationId      String
+
+  testProcedure TestProcedure @relation(fields: [testProcedureId], references: [id], onDelete: Cascade)
+  citation      Citation      @relation(fields: [citationId], references: [id], onDelete: Cascade)
+
+  @@unique([testProcedureId, citationId])
+  @@index([citationId])
+}
+
+/// CCF control -> regulatory obligation. The single mapping every screen reads.
+/// Filled from test procedure mappings (source-ID workbooks) or, for legacy
+/// workbooks, resolved at import time from their mapping columns.
+model ControlObligation {
+  id          String @id @default(cuid())
+  controlId   String
+  citationId  String
+  /// PROCEDURE (via a test procedure), PRIMARY or SECONDARY (legacy mapping columns)
+  mappingType String
+
+  control  CcfControl @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  citation Citation   @relation(fields: [citationId], references: [id], onDelete: Cascade)
+
+  @@unique([controlId, citationId])
+  @@index([citationId])
 }
 
 model EvidenceRequirement {

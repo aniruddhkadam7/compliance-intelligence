@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ExternalLink, GitCompareArrows, Network } from "lucide-react";
+import { ExternalLink, GitCompareArrows } from "lucide-react";
 import { KeyValue, Mono, Page, PageHeader, Provenance, StatStrip } from "@/components/common";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,12 +29,12 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
             <KeyValue
               cols={3}
               items={[
-                { label: "Source ID (ArC)", value: <Mono>{fw.sourceId}</Mono> },
+                { label: "Framework ID", value: <Mono>{fw.sourceId}</Mono> },
                 { label: "Publisher / group", value: fw.group },
                 { label: "Category", value: fw.type },
                 { label: "Jurisdiction", value: fw.jurisdiction },
                 { label: "Licensing", value: fw.licensing },
-                { label: "Version", value: fw.versionLabel, hint: "Derived from the ArC Source Name" },
+                { label: "Version", value: fw.versionLabel, hint: "Derived from the framework name" },
                 { label: "Publication date", value: <span className="text-subtle">Not in workbook</span> },
                 { label: "Prioritised by GSK", value: fw.prioritizedByGsk ? "Yes" : "No" },
                 { label: "Last updated (import)", value: formatDateTime(fw.updatedAt) },
@@ -70,7 +70,7 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
                     <span className="text-[13px] text-fg">{v.short}</span>
                     <span className="flex items-center gap-2">
                       {v.id === fw.id && <Badge tone="accent">Current</Badge>}
-                      <span className="text-xs text-muted tabular">{formatNumber(v.citations)} citations</span>
+                      <span className="text-xs text-muted tabular">{formatNumber(v.citations)} obligations</span>
                     </span>
                   </Link>
                 </li>
@@ -83,22 +83,6 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
               </Button>
             </div>
           )}
-        </Card>
-        <Card>
-          <CardHeader title="Related frameworks" description="Sources whose citations map to the same integrated requirements" />
-          <ul className="max-h-[420px] divide-y divide-border overflow-y-auto">
-            {fw.related.slice(0, 15).map((r) => (
-              <li key={r.id}>
-                <Link href={`/mappings?source=${fw.id}&target=${r.id}`} className="flex items-center justify-between gap-2 px-4 py-2 hover:bg-surface-2">
-                  <span className="truncate text-[13px] text-fg-2">{r.short}</span>
-                  <span className="shrink-0 text-xs text-muted tabular">{r.shared} shared IRs</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <div className="border-t border-border p-3">
-            <Button asChild size="sm" variant="ghost" className="w-full"><Link href={`/mappings?source=${fw.id}`}><Network /> Open in mapping explorer</Link></Button>
-          </div>
         </Card>
       </div>
     </div>
@@ -122,10 +106,10 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
       <StatStrip
         className="mb-4 xl:grid-cols-4"
         items={[
-          { label: "Citations", value: fw._count.citations, sub: "Source sections in the workbook" },
-          { label: "Integrated requirements", value: fw.totals.requirements, sub: "Linked through citations" },
-          { label: "Requirement coverage", value: formatPercent(fw.totals.requirements ? fw.totals.mapped / fw.totals.requirements : 0), tone: "accent", sub: `${fw.totals.mapped} IRs with a CCF control` },
-          { label: "Mapped CCF controls", value: fw.totals.controls, sub: "Via authoritative mappings" },
+          { label: "Regulatory obligations", value: fw._count.citations, sub: "Requirements in this framework" },
+          { label: "Mapping coverage", value: formatPercent(fw._count.citations ? fw.totals.mapped / fw._count.citations : 0), tone: "accent", sub: `${formatNumber(fw.totals.mapped)} obligations with a CCF control` },
+          { label: "Unmapped obligations", value: fw._count.citations - fw.totals.mapped, tone: "warning", sub: "No CCF control mapped" },
+          { label: "Mapped CCF controls", value: fw.totals.controls, sub: "Controls linked to this framework" },
         ]}
       />
       <FrameworkTabs frameworkId={fw.id} overview={overview} />

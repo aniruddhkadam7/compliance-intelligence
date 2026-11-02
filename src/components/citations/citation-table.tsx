@@ -13,7 +13,7 @@ export interface CitationRow {
   sectionName: string;
   sectionLabel: string;
   framework: { id: string; name: string; short: string; versionLabel: string | null; sourceId: string };
-  requirements: { requirementId: string; name: string | null; controls: number }[];
+  controls: number;
 }
 
 export interface CitationQuery {
@@ -51,9 +51,9 @@ export function CitationTable({
   const { data, isLoading, error, refetch } = useCitations(query);
   const columns = useMemo<ColumnDef<CitationRow, unknown>[]>(() => {
     const cols: ColumnDef<CitationRow, unknown>[] = [
-      { id: "sectionId", header: "Citation ID", size: 110, cell: ({ row }) => <Mono>{row.original.sourceSectionId}</Mono> },
+      { id: "sectionId", header: "Obligation ID", size: 110, cell: ({ row }) => <Mono>{row.original.sourceSectionId}</Mono> },
       {
-        id: "sectionName", header: "Source section",
+        id: "sectionName", header: "Requirement description",
         cell: ({ row }) => (
           <div className="min-w-[280px]">
             <div className="font-medium text-fg">{row.original.sectionLabel}</div>
@@ -73,18 +73,10 @@ export function CitationTable({
       });
     cols.push(
       {
-        id: "requirement", header: "Integrated requirement", enableSorting: false,
-        cell: ({ row }) => row.original.requirements.map((r) => (
-          <div key={r.requirementId} className="min-w-[220px] text-xs">
-            <Mono className="text-[11px]">IR {r.requirementId}</Mono> <span className="text-fg-2">{r.name}</span>
-          </div>
-        )),
-      },
-      {
-        id: "controls", header: "CCF controls", enableSorting: false, size: 110,
+        id: "controls", header: "Control map", enableSorting: false, size: 110,
         cell: ({ row }) => {
-          const n = row.original.requirements.reduce((s, r) => s + r.controls, 0);
-          return n ? <Badge tone="accent">{n} mapped</Badge> : <Badge tone="warning">None</Badge>;
+          const n = row.original.controls;
+          return n ? <Badge tone="accent">{n} control{n > 1 ? "s" : ""}</Badge> : <Badge tone="warning">None</Badge>;
         },
       },
     );

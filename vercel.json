@@ -1,4 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ] && [ -n \"$DATABASE_URL_UNPOOLED\" ]; then DATABASE_URL=\"$DATABASE_URL_UNPOOLED\" npx prisma db push --skip-generate; fi && next build",
   "crons": [{ "path": "/api/cron/connectors", "schedule": "0 6 * * *" }]
 }

@@ -59,8 +59,8 @@ export function CoverageBars({ data }: { data: { short: string; id: string; mapp
   return (
     <div>
       <div className="mb-2 flex items-center gap-4 text-[11px] text-muted">
-        <span className="flex items-center gap-1.5"><Swatch color="var(--chart-1)" />IRs with a CCF control mapping</span>
-        <span className="flex items-center gap-1.5"><Swatch color="var(--chart-muted)" />IRs without a CCF mapping</span>
+        <span className="flex items-center gap-1.5"><Swatch color="var(--chart-1)" />Obligations with a mapped CCF control</span>
+        <span className="flex items-center gap-1.5"><Swatch color="var(--chart-muted)" />Obligations without a mapped control</span>
       </div>
       <div style={{ height: h }}>
         <ResponsiveContainer width="100%" height="100%">

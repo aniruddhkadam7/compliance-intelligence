@@ -15,13 +15,13 @@ export const NAV: { section: string; items: NavItem[] }[] = [
     section: "Repository",
     items: [
       { href: "/frameworks", label: "Framework Repository", icon: Library },
-      { href: "/citations", label: "Citation Explorer", icon: Quote },
+      { href: "/citations", label: "Obligation Explorer", icon: Quote },
     ],
   },
   {
     section: "Mapping",
     items: [
-      { href: "/mappings", label: "Cross-Framework Mapping", icon: Network },
+      { href: "/mappings", label: "Legacy vs Latest", icon: Network },
       { href: "/controls", label: "Internal CCF Mapping", icon: ShieldCheck },
       { href: "/version-impact", label: "Version Impact", icon: GitCompareArrows },
     ],
