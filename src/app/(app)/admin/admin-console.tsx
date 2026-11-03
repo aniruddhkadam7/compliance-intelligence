@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, Eye, Loader2, RefreshCw, Send, Undo2, Upload } from "lucide-react";
+import { CheckCircle2, Eye, History, Loader2, RefreshCw, Send, Undo2, Upload } from "lucide-react";
 import { EmptyState, Mono, Page, PageHeader, StatStrip } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Dot } from "@/components/ui/badge";
@@ -121,6 +121,32 @@ export function AdminConsole({ docs, quality }: { docs: SourceRow[]; quality: Re
       <p className="mt-3 text-[11px] text-subtle">
         Releasing does not change the library. A user clicks Update to install the new version; the previous version stays in the library, client mappings get change proposals, and the publisher is checked again.
       </p>
+      <PreviousVersionRecords />
     </Page>
+  );
+}
+
+/** Researched previous-version records (version replaced, publisher facts, official source): fills empty fields only. */
+function PreviousVersionRecords() {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    try {
+      const r = await apiSend<{ changes: { sourceId: string; name: string }[] }>("/api/admin/previous-versions", { apply: true });
+      toast.success(r.changes.length ? `Previous-version records filled for ${r.changes.length} document(s)` : "All previous-version records are already filled");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    } finally { setBusy(false); }
+  };
+  return (
+    <Card className="mt-4 flex flex-wrap items-center gap-3 p-4">
+      <div className="min-w-0 flex-1 text-[13px]">
+        <div className="font-medium text-fg">Previous-version records</div>
+        <div className="text-xs text-muted">The version each document replaced, with the publisher facts and official source, shown in Sources and the Framework Repository. Fills empty records only; existing values are never overwritten.</div>
+      </div>
+      <Button size="sm" disabled={busy} onClick={run}>{busy ? <Loader2 className="animate-spin" /> : <History />} Fill missing records</Button>
+    </Card>
   );
 }
