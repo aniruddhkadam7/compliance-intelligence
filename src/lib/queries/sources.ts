@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { deriveFamily, shortName } from "@/lib/frameworks";
 import { MECHANISM_LABEL, type Mechanism } from "@/lib/connectors/types";
 import { applicabilityOf } from "@/lib/sources/applicability";
+import { previousVersionOf, versionOf } from "@/lib/sources/previous-versions";
 import { compareVersions, comparisonSummary } from "@/lib/sources/headings";
 
 export function publisherOf(name: string) {
@@ -69,11 +70,11 @@ function shape(f: Awaited<ReturnType<typeof load>>[number], all: { id: string; n
     licensing: f.licensing,
     description: f.description,
     documentUrl: f.documentUrl,
-    version: f.versionLabel,
+    version: versionOf(f),
     previousVersion: previous ? { id: previous.id, short: shortName(previous.name), version: previous.versionLabel } : null,
     familyVersions: family.map((x) => ({ id: x.id, short: shortName(x.name), version: x.versionLabel })),
     // Predecessor as stated by the publisher, recorded even when its text is not loaded.
-    recordedPrevious: f.previousVersionNote ? { version: f.previousVersion, note: f.previousVersionNote, source: f.previousVersionSource ?? f.documentUrl } : null,
+    recordedPrevious: previousVersionOf(f),
     obligations: f._count.citations,
     publishedDate: f.connectors.flatMap((c) => c.checks.map((k) => reportedDate(k.details))).find(Boolean) ?? null,
     monitoring: f.connectors.map((c) => ({ id: c.id, name: c.name, mechanism: c.mechanism, lastCheckedAt: c.lastCheckedAt?.toISOString() ?? null, lastStatus: c.lastStatus, currentVersion: c.currentVersion })),

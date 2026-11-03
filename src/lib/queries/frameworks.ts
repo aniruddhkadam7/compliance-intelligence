@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { shortName } from "@/lib/frameworks";
+import { previousVersionOf, versionOf } from "@/lib/sources/previous-versions";
 
 export const FrameworkFilters = z.object({
   q: z.string().trim().max(200).optional().default(""),
@@ -87,11 +88,12 @@ export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
   const versionsHeld = new Set(all.map((f) => `${f.family}|${f.versionLabel}`));
   const recorded = rows.flatMap((r) => {
     const base = loaded.find((x) => x.id === r.id)!;
-    if (base.versionStatus !== "CURRENT" || !r.previousVersion || versionsHeld.has(`${r.family}|${r.previousVersion}`)) return [];
+    const pv = previousVersionOf(r);
+    if (base.versionStatus !== "CURRENT" || !pv?.version || versionsHeld.has(`${r.family}|${pv.version}`)) return [];
     return [{
-      ...base, id: `recorded:${r.id}`, sourceId: "", name: `${shortName(r.name)}: version ${r.previousVersion}`, versionLabel: r.previousVersion,
-      citations: 0, sourceUpdatedAt: null, sourceUpdatedBy: null, documentUrl: r.previousVersionSource ?? r.documentUrl,
-      versionStatus: "RECORDED" as VersionStatus, supersededBy: { id: r.id, version: r.versionLabel }, note: r.previousVersionNote,
+      ...base, id: `recorded:${r.id}`, sourceId: "", name: `${shortName(r.name)}: version ${pv.version}`, versionLabel: pv.version,
+      citations: 0, sourceUpdatedAt: null, sourceUpdatedBy: null, documentUrl: pv.source,
+      versionStatus: "RECORDED" as VersionStatus, supersededBy: { id: r.id, version: versionOf(r) }, note: pv.note,
     }];
   });
   return [...loaded, ...recorded];

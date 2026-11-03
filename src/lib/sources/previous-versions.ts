@@ -9,6 +9,7 @@ export const PREVIOUS_VERSIONS: Row[] = [
   { sourceId: "100", version: "1997", prev: null, note: "Original rule published 20 March 1997 (62 FR 13430), effective 20 August 1997. No earlier version; later changes are technical amendments to the same Part.", src: "https://www.ecfr.gov/current/title-21/chapter-I/subchapter-A/part-11" },
   { sourceId: "110", version: "2021", prev: null, note: "First national personal information protection law of the PRC: adopted 20 August 2021, in force 1 November 2021. No earlier version.", src: null },
   { sourceId: "121", prev: "8", note: "CIS Controls v8 (May 2021) was succeeded by v8.1 (June 2024).", src: "https://www.cisecurity.org/controls/v8-1" },
+  { sourceId: "130", prev: "3.0.1", note: "CSA released CCM v4.0 in January 2021 as the successor to CCM v3.0.1, adding new control domains (e.g. Logging and Monitoring) and more than 60 new controls.", src: "https://cloudsecurityalliance.org/artifacts/cloud-controls-matrix-v4" },
   { sourceId: "131", prev: "4.0.13", note: "CSA states CCM v4.1 (released January 2026) succeeds CCM v4.0.13. The library copy is labelled 4.1.1.", src: "https://cloudsecurityalliance.org/articles/ccm-v4-1-transition-timeline" },
   { sourceId: "140", prev: "4.0", note: "COBIT 4.0 (2005) was succeeded by COBIT 4.1 (2007). COBIT 4.1 has since been superseded by COBIT 5 and COBIT 2019.", src: "https://www.isaca.org/resources/cobit" },
   { sourceId: "150", version: "2024", prev: null, note: "Regulation (EU) 2024/1689 is the original act; no earlier version. It was later amended by Regulation (EU) 2026/1744 (Digital Omnibus on AI, in force 27 July 2026), which is an update, not a predecessor.", src: "https://eur-lex.europa.eu/eli/reg/2024/1689/oj" },
@@ -49,3 +50,18 @@ export async function fillPreviousVersions(apply: boolean) {
   }
   return { applied: apply, changes };
 }
+
+const BY_SOURCE_ID = new Map(PREVIOUS_VERSIONS.map((r) => [r.sourceId, r]));
+
+/**
+ * Previous-version record of a document: the stored one, else the built-in researched record (so the column
+ * is never empty just because a database has not been filled). Pure: safe in any query.
+ */
+export function previousVersionOf(f: { sourceId: string; previousVersion: string | null; previousVersionNote: string | null; previousVersionSource: string | null; documentUrl: string | null }) {
+  if (f.previousVersionNote) return { version: f.previousVersion, note: f.previousVersionNote, source: f.previousVersionSource ?? f.documentUrl };
+  const r = BY_SOURCE_ID.get(f.sourceId);
+  return r ? { version: r.prev, note: r.note, source: r.src ?? f.documentUrl } : null;
+}
+
+/** Version label, falling back to the researched version for laws the workbook leaves blank (e.g. "1997"). */
+export const versionOf = (f: { sourceId: string; versionLabel: string | null }) => f.versionLabel ?? BY_SOURCE_ID.get(f.sourceId)?.version ?? null;
