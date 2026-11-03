@@ -3,7 +3,7 @@ import { z } from "zod";
 import { handle, requireSession } from "@/lib/auth/server";
 import { controlCoverage, frameworkConnection, MATRIX_BASES, matrixPairs } from "@/lib/queries/framework-matrix";
 
-const Basis = z.enum(MATRIX_BASES).default("controls");
+const Basis = z.enum(MATRIX_BASES).default("supplied");
 
 /** Framework Matrix: ?view=pairs&basis=, ?view=coverage, or ?view=connection&a=&b=&basis=. */
 export const GET = handle(async (req: Request) => {

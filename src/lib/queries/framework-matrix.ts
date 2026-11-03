@@ -11,7 +11,7 @@ import { parseHeading } from "@/lib/sources/headings";
 export const MATRIX_BASES = ["controls", "supplied"] as const;
 export type MatrixBasis = (typeof MATRIX_BASES)[number];
 
-interface LinkRow { a_id: string; a_sid: string; a_name: string; a_text: string | null; b_id: string; b_sid: string; b_name: string; b_text: string | null; bridge: string | null; team: string | null }
+interface LinkRow { a_id: string; a_sid: string; a_name: string; a_text: string | null; b_id: string; b_sid: string; b_name: string; b_text: string | null; bridge: string | null; team: string | null; rel: string | null }
 
 async function names(ids: string[]) {
   const fws = await prisma.framework.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, type: true } });
@@ -65,6 +65,9 @@ const edges = (pairs: [string, string][]) => {
   }
   return [...m.values()];
 };
+/** Section text without the heading it repeats ("NIST SP 800-53 r5.1.1: AU-06-AUDIT RECORD REVIEW… a. Review…"). */
+const withoutHeading = (name: string, text: string | null) => (text?.startsWith(name) ? text.slice(name.length).replace(/^[\s\-–:]+/, "") : text) || null;
+const byId = (x: string, y: string) => x.localeCompare(y, undefined, { numeric: true });
 const teamsOf = (scope: string | null) => (scope ?? "").split(/[,/;&]+|\band\b/i).map((t) => t.trim()).filter(Boolean);
 
 /** How two documents connect: domain, segment and team views plus the section pairs. */
@@ -73,7 +76,7 @@ export async function frameworkConnection(a: string, b: string, basis: MatrixBas
     ? await prisma.$queryRaw<LinkRow[]>`
         SELECT ca.id AS a_id, ca."sourceSectionId" AS a_sid, ca."sectionName" AS a_name, ca."sectionText" AS a_text,
                cb.id AS b_id, cb."sourceSectionId" AS b_sid, cb."sectionName" AS b_name, cb."sectionText" AS b_text,
-               x."controlId" AS bridge, ctl.scope AS team
+               x."controlId" AS bridge, ctl.scope AS team, NULL AS rel
         FROM "ControlObligation" x
         JOIN "ControlObligation" y ON y."controlId" = x."controlId"
         JOIN "Citation" ca ON ca.id = x."citationId"
@@ -83,7 +86,7 @@ export async function frameworkConnection(a: string, b: string, basis: MatrixBas
     : await prisma.$queryRaw<LinkRow[]>`
         SELECT ca.id AS a_id, ca."sourceSectionId" AS a_sid, ca."sectionName" AS a_name, ca."sectionText" AS a_text,
                cb.id AS b_id, cb."sourceSectionId" AS b_sid, cb."sectionName" AS b_name, cb."sectionText" AS b_text,
-               NULL AS bridge, NULL AS team
+               NULL AS bridge, NULL AS team, r.status AS rel
         FROM "SourceRelationship" r
         JOIN "Citation" c1 ON c1.id = r."fromCitationId"
         JOIN "Citation" c2 ON c2.id = r."toCitationId"
@@ -96,13 +99,17 @@ export async function frameworkConnection(a: string, b: string, basis: MatrixBas
   const dom = (n: string) => parseHeading(n).domain ?? "Other sections";
   const seg = (n: string) => { const h = parseHeading(n); return h.segment ?? h.domain ?? "Other sections"; };
 
-  // One entry per distinct section pair; bridges and teams are aggregated, never listed.
-  type Sec = { id: string; sourceSectionId: string; sectionName: string; description: string | null };
-  const pairs = new Map<string, { a: Sec; b: Sec; bridges: Set<string>; teams: Set<string> }>();
+  // One entry per distinct section pair; bridges and teams are aggregated, never listed. Sections are shown by
+  // their publisher identifier (e.g. PR.AA-01, AC-02); the library's numeric Source Section IDs stay internal.
+  type Sec = ReturnType<typeof sec>;
+  const sec = (id: string, sid: string, name: string, text: string | null) =>
+    ({ id, sourceSectionId: sid, identifier: parseHeading(name).identifier ?? name, domain: dom(name), sectionName: name, description: withoutHeading(name, text) });
+  const pairs = new Map<string, { a: Sec; b: Sec; bridges: Set<string>; teams: Set<string>; types: Set<string> }>();
   for (const r of rows) {
     const k = `${r.a_id}|${r.b_id}`;
-    const p = pairs.get(k) ?? { a: { id: r.a_id, sourceSectionId: r.a_sid, sectionName: r.a_name, description: r.a_text }, b: { id: r.b_id, sourceSectionId: r.b_sid, sectionName: r.b_name, description: r.b_text }, bridges: new Set(), teams: new Set() };
+    const p = pairs.get(k) ?? { a: sec(r.a_id, r.a_sid, r.a_name, r.a_text), b: sec(r.b_id, r.b_sid, r.b_name, r.b_text), bridges: new Set(), teams: new Set(), types: new Set() };
     if (r.bridge) p.bridges.add(r.bridge);
+    if (r.rel) p.types.add(r.rel);
     for (const t of teamsOf(r.team)) p.teams.add(t);
     pairs.set(k, p);
   }
@@ -123,7 +130,7 @@ export async function frameworkConnection(a: string, b: string, basis: MatrixBas
       prisma.citation.count({ where }),
       prisma.citation.findMany({ where, orderBy: { sourceSectionId: "asc" }, take: 1000, select: { id: true, sourceSectionId: true, sectionName: true, sectionText: true } }),
     ]);
-    return { total, count: all, items: items.map((c) => ({ id: c.id, sourceSectionId: c.sourceSectionId, sectionName: c.sectionName, description: c.sectionText })) };
+    return { total, count: all, items: items.map((c) => sec(c.id, c.sourceSectionId, c.sectionName, c.sectionText)).sort((x, y) => byId(x.identifier, y.identifier)) };
   };
   const [unmatchedA, unmatchedB] = await Promise.all([unmatchedOf(a, aSections), unmatchedOf(b, bSections)]);
 
@@ -144,8 +151,8 @@ export async function frameworkConnection(a: string, b: string, basis: MatrixBas
       edgesOut: edges(teamPairs.map((x) => [x.t, x.b])),
     },
     sections: list
-      .map((p) => ({ a: p.a, b: p.b, via: p.bridges.size, teams: [...p.teams] }))
-      .sort((x, y) => x.a.sourceSectionId.localeCompare(y.a.sourceSectionId) || x.b.sourceSectionId.localeCompare(y.b.sourceSectionId))
+      .map((p) => ({ a: p.a, b: p.b, via: p.bridges.size, teams: [...p.teams], types: [...p.types] }))
+      .sort((x, y) => byId(x.a.identifier, y.a.identifier) || byId(x.b.identifier, y.b.identifier))
       .slice(0, 1000),
   };
 }
