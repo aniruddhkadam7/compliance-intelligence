@@ -46,8 +46,6 @@ const newer = (a: Doc, b: Doc) => { const x = version(a.versionLabel), y = versi
 const tally = (items: string[]) => [...items.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map<string, number>())].sort((a, b) => b[1] - a[1]);
 const pct = (n: number, d: number) => (d ? n / d : 0);
 
-/** Hover or focus reveal; the space is reserved so nothing moves. */
-const REVEAL = "translate-y-1 opacity-0 transition duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100";
 
 /* ---------- small building blocks ---------- */
 
@@ -215,9 +213,9 @@ export default async function OverviewPage() {
   const pairLinks = pairs.reduce((n, p) => n + p.links, 0);
 
   const HEADLINES = [
-    { icon: Layers, title: "Every rule you answer to.", sub: "One map of your controls.", body: "Every law, regulation, standard and framework in scope, broken into requirements and linked to the controls you already run.", action: "See the map", href: "/controls" },
-    { icon: RefreshCcw, title: "Compliance that keeps pace", sub: "with the rules.", body: "When a rule changes, only the affected links are re-mapped, so your view is always current.", action: "See how it updates", href: "/change-analytics" },
-    { icon: Gauge, title: "Know where you stand.", sub: "Against every rule that applies.", body: "See what's met, partly met, and open, from board view down to a single clause.", action: "Explore sample map", href: "/controls" },
+    { icon: Layers, title: "Every rule you answer to.", sub: "One map of your controls.", href: "/frameworks" },
+    { icon: RefreshCcw, title: "Compliance that keeps pace", sub: "with the rules.", href: "/sources" },
+    { icon: Gauge, title: "Know where you stand.", sub: "Against every rule that applies.", href: "/controls" },
   ];
 
   return (
@@ -225,33 +223,33 @@ export default async function OverviewPage() {
       <PageHeader title={TERMS.overview} description={lastChecked ? `Live figures · library last checked against publishers ${formatDate(lastChecked)}` : "Live figures from the platform"} />
 
       {/* 1. Regulation statement, with the scale behind it */}
-      <section className="mb-5 grid overflow-hidden rounded-2xl bg-[#2e2e38] lg:grid-cols-[1fr_auto] dark:bg-surface-3">
-        <div className="px-6 py-7 sm:px-9">
-          <div className="border-l-4 border-[#ffe600] pl-5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#ffe600]">Why it matters</div>
-            <p className="mt-2 text-base leading-relaxed text-white/90 sm:text-[17px]">{STATEMENT}</p>
+      <section className="mb-5 grid items-center overflow-hidden rounded-xl bg-[#2e2e38] xl:grid-cols-[1fr_auto] dark:bg-surface-3">
+        <div className="px-5 py-4">
+          <div className="border-l-[3px] border-[#ffe600] pl-4">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#ffe600]">Why it matters</div>
+            <p className="mt-1 text-[13px] leading-relaxed text-white/85">{STATEMENT}</p>
           </div>
         </div>
-        <div className="grid grid-cols-3 border-t border-white/10 lg:grid-cols-1 lg:border-l lg:border-t-0">
+        <div className="grid h-full grid-cols-3 border-t border-white/10 xl:border-l xl:border-t-0">
           {[
-            { n: formatNumber(current.length), l: "authoritative documents" },
-            { n: formatNumber(totalReqs), l: "requirements broken out" },
-            { n: formatNumber(links), l: "control-to-requirement links" },
+            { n: formatNumber(current.length), l: "documents" },
+            { n: formatNumber(totalReqs), l: "requirements" },
+            { n: formatNumber(links), l: "control links" },
           ].map((s, i) => (
-            <div key={s.l} className={cn("px-6 py-4 lg:min-w-[220px]", i > 0 && "border-l border-white/10 lg:border-l-0 lg:border-t")}>
-              <div className="text-2xl font-semibold tabular text-white">{s.n}</div>
-              <div className="text-xs text-white/60">{s.l}</div>
+            <div key={s.l} className={cn("flex flex-col justify-center px-5 py-3 xl:min-w-[120px]", i > 0 && "border-l border-white/10")}>
+              <div className="text-lg font-semibold leading-tight tabular text-white">{s.n}</div>
+              <div className="text-[11px] text-white/60">{s.l}</div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* 2. Headline cards: live figures, with the story and link on hover */}
+      {/* 2. Headline cards: live figures; each card opens the page behind it */}
       <section className="mb-8 grid gap-4 lg:grid-cols-3">
         {HEADLINES.map((h, i) => (
-          <div key={h.title} tabIndex={0} className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-surface p-5 shadow-xs outline-none transition hover:-translate-y-0.5 hover:shadow-pop focus-visible:ring-2 focus-visible:ring-[#ffe600]">
+          <Link key={h.title} href={h.href} className="flex flex-col rounded-2xl border border-border bg-surface p-5 shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-[#ffe600]">
             <div className="flex items-start gap-3">
-              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-fg transition group-hover:bg-[#ffe600] group-hover:text-[#2e2e38]"><h.icon className="size-[18px]" /></span>
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-fg"><h.icon className="size-[18px]" /></span>
               <div className="min-w-0">
                 <div className="text-[15px] font-semibold leading-snug text-fg">{h.title}</div>
                 <div className="text-[15px] leading-snug text-muted">{h.sub}</div>
@@ -287,13 +285,7 @@ export default async function OverviewPage() {
                 ) : <p className="text-xs text-muted">Upload the client&apos;s controls to see where they stand.</p>
               )}
             </div>
-
-            <div className={cn("absolute inset-x-0 bottom-0 border-t border-border bg-surface/95 px-5 pb-5 pt-3 backdrop-blur-sm", REVEAL)}>
-              <p className="text-[13px] leading-relaxed text-fg-2">{h.body}</p>
-              <Link href={h.href} className="mt-1.5 inline-flex items-center gap-1.5 text-[13px] font-semibold text-fg underline-offset-4 hover:underline">{h.action} <ArrowRight className="size-3.5" /></Link>
-            </div>
-            <span aria-hidden className="absolute inset-x-0 bottom-0 h-1 origin-left scale-x-0 bg-[#ffe600] transition-transform duration-300 group-hover:scale-x-100 group-focus-within:scale-x-100" />
-          </div>
+          </Link>
         ))}
       </section>
 
@@ -428,17 +420,6 @@ export default async function OverviewPage() {
         </div>
       </section>
 
-      {/* 5. Closing call to action */}
-      <section className="flex flex-col items-start gap-5 rounded-2xl bg-[#2e2e38] px-6 py-7 sm:flex-row sm:items-center sm:px-9 dark:bg-surface-3">
-        <div className="min-w-0 flex-1">
-          <div className="text-2xl font-semibold tracking-tight text-white">Test your controls.</div>
-          <p className="mt-1 text-sm text-white/75">Upload your control list and see your compliance map in under 2 minutes.</p>
-          {lastImport && <p className="mt-2 text-xs text-white/55">Current map: {formatNumber(controls)} controls · {formatNumber(links)} links · last upload {lastImport.completedAt ? formatDate(lastImport.completedAt) : ""}</p>}
-        </div>
-        <Link href="/data?tab=import" className="inline-flex items-center gap-2 rounded-lg bg-[#ffe600] px-5 py-2.5 text-sm font-semibold text-[#2e2e38] transition hover:bg-[#fff066]">
-          <Upload className="size-4" /> Test your controls
-        </Link>
-      </section>
     </Page>
   );
 }
