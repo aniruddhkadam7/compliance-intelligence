@@ -36,13 +36,18 @@ const ROLE_LABEL: Record<string, string> = {
   SOURCES: "Frameworks", CITATIONS: "Regulatory obligations", REQUIREMENTS: "Mapping groups", CONTROLS: "CCF controls (authoritative)",
   CONTROLS_WORKING: "CCF working sheet", METRICS: "Validation only", IR_ID_LIST: "Validation only", UNMAPPED_REVIEW: "Unmapped review", UNRECOGNISED: "Not imported",
   PROCEDURE_MAP: "Test procedure mapping", SOURCE_LIST: "Framework list (checked)", SOURCE_METADATA: "Framework details",
+  VERSION_TRANSITIONS: "Version transitions", CROSS_FRAMEWORK: "Framework relationships",
 };
 const COUNT_LABEL: Record<string, string> = {
   frameworks: "Frameworks", citations: "Regulatory obligations", citationLinks: "Obligation links", requirements: "Mapping groups", controls: "CCF controls",
   mappings: "Control mappings (both sheets)", authoritativeMappings: "Authoritative mappings", testProcedures: "Test procedures", evidence: "Evidence statements",
   frameworkReferences: "Framework references", reviews: "Unmapped review rows", rows: "Transition rows",
   procedureLinks: "Test procedure → obligation links", controlObligations: "Control → obligation mappings",
+  libraryDocuments: "Library documents in file", librarySections: "Library sections in file", documentsRenumbered: "Documents renumbered (re-keyed)",
+  documentsAdded: "New documents", crossFramework: "Framework relationships", versionTransitions: "Version transitions",
 };
+/** Confirmation for a workbook that also carries the document library and relationships. */
+const FULL_CONFIRM = "This workbook also carries the document library and framework relationships. The library is updated first (documents matched by name; renumbered Source IDs are re-keyed, nothing is deleted), the framework relationships in the file replace the current ones, then the client's controls and mappings are replaced (the previous mapping is recorded in the import history).";
 
 export function ImportWizard() {
   const router = useRouter();
@@ -234,7 +239,7 @@ export function ImportWizard() {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title={`Import ${meta.title.toLowerCase()}?`}
-        description={meta.confirm}
+        description={preview?.counts.libraryDocuments !== undefined ? FULL_CONFIRM : meta.confirm}
         footer={<><Button onClick={() => setConfirmOpen(false)}>Cancel</Button><Button variant="primary" onClick={confirm}>Import {file?.name}</Button></>}
       />
     </div>

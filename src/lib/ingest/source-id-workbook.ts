@@ -233,13 +233,16 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
     // --- Test procedures -> obligations --------------------------------------------------
     const rmp = reader(mapSheet_);
     const obligationKey = new Set<string>();
+    // Every "Source Section ID" column (e.g. "Source Section ID (2)" holds the same mapping for a newer version).
+    const sectionColumns = mapSheet_.headers.filter((h) => /^source section id\b/i.test(h.trim()));
+    const outside = new Map<string, number>(); // control -> test procedures, for controls not in the register
     for (const { rowNumber, values } of mapSheet_.rows) {
       const controlName = rmp.get(values, "Control ID");
       const procedureId = rmp.get(values, "Test Procedure ID");
       if (!controlName || !procedureId) continue;
       const controlId = controlByName.get(controlName);
       if (!controlId) {
-        issues.push({ severity: "WARNING", code: "UNKNOWN_CONTROL", sheet: mapSheet_.name, row: rowNumber, message: `${procedureId}: control ${controlName} is not on the “${ctlSheet_.name}” sheet.` });
+        outside.set(controlName, (outside.get(controlName) ?? 0) + 1);
         continue;
       }
       const tpId = id();
@@ -247,13 +250,13 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
         id: tpId, controlId, kind: "PROCEDURE", procedureId, text: rmp.get(values, "Test Procedure") ?? procedureId,
         sourceSheet: mapSheet_.name, sourceColumn: rmp.col("Test Procedure") ?? "Test Procedure",
       });
-      const cell = rmp.get(values, "Source Section ID") ?? "";
-      const tokens = cell.split(/[\s,;]+/).filter(Boolean);
+      const cell = sectionColumns.map((h) => clean(values[h]) ?? "").join(" ").trim();
+      const tokens = cell.split(/[\s,;:]+/).filter(Boolean);
       if (!tokens.some((t) => /^\d+$/.test(t))) {
         issues.push({ severity: "INFO", code: "PROCEDURE_UNMAPPED", sheet: mapSheet_.name, row: rowNumber, column: "Source Section ID", message: `${procedureId} has no mapped obligation${cell ? ` (“${cell}”)` : ""}.` });
         continue;
       }
-      for (const t of tokens.filter((x) => /^\d+$/.test(x))) {
+      for (const t of [...new Set(tokens.filter((x) => /^\d+$/.test(x)))]) {
         const citationId = citationBySection.get(t);
         if (!citationId) {
           issues.push({ severity: "WARNING", code: "UNKNOWN_SECTION_ID", sheet: mapSheet_.name, row: rowNumber, column: "Source Section ID", message: `${procedureId}: Source Section ID ${t} is not in the document library.` });
@@ -267,6 +270,11 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
         }
       }
     }
+    if (outside.size)
+      issues.push({
+        severity: "INFO", code: "CONTROLS_OUTSIDE_REGISTER", sheet: mapSheet_.name,
+        message: `${[...outside.values()].reduce((n, v) => n + v, 0)} test procedures belong to ${outside.size} controls that are not in the client register (“${ctlSheet_.name}”) and were not imported: ${[...outside.keys()].slice(0, 12).join(", ")}${outside.size > 12 ? "…" : ""}.`,
+      });
     const unmappedControls = ds.controls.filter((c) => !ds.controlObligations.some((o) => o.controlId === c.id));
     if (unmappedControls.length)
       issues.push({ severity: "INFO", code: "UNMAPPED_CONTROLS", sheet: mapSheet_.name, message: `${unmappedControls.length} control(s) have no mapped obligation: ${unmappedControls.map((c) => c.controlName).join(", ")}.` });

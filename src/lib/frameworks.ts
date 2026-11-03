@@ -45,6 +45,17 @@ export function deriveFamily(name: string): string {
   return name.split(" - ")[0].trim();
 }
 
+/**
+ * Identity of a document independent of its Source ID: family and version ("NIST CSF|1.1"). Workbooks can
+ * renumber Source IDs, so documents are matched across files and records by this key.
+ */
+export const documentKey = (name: string) => {
+  const version = deriveVersion(name) ?? "";
+  // A family that ends in its own version ("NIST CSF 1.1", "COBIT 4.1") is keyed without it.
+  const family = version ? deriveFamily(name).replace(new RegExp(`\\s+v?${version.replace(/\./g, "\\.")}$`, "i"), "") : deriveFamily(name);
+  return `${family}|${version}`;
+};
+
 /** Compact label for tables and charts. */
 export function shortName(name: string): string {
   const family = deriveFamily(name);

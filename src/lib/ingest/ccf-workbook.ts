@@ -29,6 +29,8 @@ export type SheetRole =
   | "PROCEDURE_MAP"
   | "SOURCE_LIST"
   | "SOURCE_METADATA"
+  | "VERSION_TRANSITIONS"
+  | "CROSS_FRAMEWORK"
   | "UNRECOGNISED";
 
 const REQUIRED: Record<string, string[]> = {
