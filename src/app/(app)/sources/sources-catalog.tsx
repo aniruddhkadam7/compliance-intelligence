@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowRight, BellRing, BookOpenText, Check, ChevronRight, Download, ExternalLink, Eye, Loader2, RefreshCw, Search, X } from "lucide-react";
+import { ArrowRight, BellRing, BookOpenText, Check, ChevronRight, ExternalLink, Eye, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { EmptyState, Mono, Page, PageHeader, StatStrip } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Badge, Dot } from "@/components/ui/badge";
@@ -87,7 +87,7 @@ export function UpdateAction({ d, role }: { d: Pick<SourceRow, "id" | "short" | 
         <span className="text-[11px] text-fg-2">Install {label}? The current version is kept.</span>
         <Button size="sm" variant="primary" disabled={busy} onClick={apply}>{busy ? <Loader2 className="animate-spin" /> : <Check />} Confirm</Button>
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirming(false)}>Cancel</Button>
-      </> : <Button size="sm" variant="primary" onClick={() => setConfirming(true)}><Download /> Update to {p.version ?? "new version"}</Button>}
+      </> : <Button size="sm" variant="primary" onClick={() => setConfirming(true)}>Update to {p.version ?? "new version"}</Button>}
     </span>
   );
 }

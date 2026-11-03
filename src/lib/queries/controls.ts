@@ -3,13 +3,15 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { shortName } from "@/lib/frameworks";
 import { controlsNeedingReview } from "@/lib/updates/impact";
+import { frameworkUpdates, type FrameworkUpdate, type FrameworkUpdateKind } from "./sources";
+const KIND_ORDER: FrameworkUpdateKind[] = ["READY", "AVAILABLE", "NEWER_IN_LIBRARY"];
 import { ListParams, paging } from "./params";
 
 export const ControlFilters = ListParams.extend({
   category: z.string().max(120).optional().default(""),
   scope: z.string().max(60).optional().default(""),
   prefix: z.string().max(30).optional().default(""),
-  mapping: z.enum(["", "mapped", "unmapped", "conflict", "review"]).optional().default(""),
+  mapping: z.enum(["", "mapped", "unmapped", "conflict", "review", "update"]).optional().default(""),
   frameworkId: z.string().max(40).optional().default(""),
   /** Framework family (all versions), e.g. "NIST CSF". */
   family: z.string().max(120).optional().default(""),
@@ -18,6 +20,23 @@ export type ControlFilters = z.infer<typeof ControlFilters>;
 
 /** ControlObligation.mappingType of illustrative demonstration links (see scripts/seed-nist-demo.ts). */
 export const DEMO_MAPPING = "DEMO";
+
+/** Per control: mapped documents that have a newer version (released for install, or at the publisher). */
+async function controlFrameworkUpdates(controlIds?: string[]) {
+  const updates = await frameworkUpdates();
+  const out = new Map<string, FrameworkUpdate[]>();
+  if (!updates.size) return { updates, byControl: out };
+  const links = await prisma.controlObligation.findMany({
+    where: { citation: { frameworkId: { in: [...updates.keys()] } }, ...(controlIds && { controlId: { in: controlIds } }) },
+    distinct: ["controlId", "citationId"], select: { controlId: true, citation: { select: { frameworkId: true } } },
+  });
+  for (const l of links) {
+    const list = out.get(l.controlId) ?? [];
+    if (!list.some((u) => u.frameworkId === l.citation.frameworkId)) list.push(updates.get(l.citation.frameworkId)!);
+    out.set(l.controlId, list);
+  }
+  return { updates, byControl: out };
+}
 
 const SORTS = ["controlName", "category", "scope", "title"] as const;
 
@@ -52,6 +71,7 @@ export async function listControls(f: ControlFilters) {
   };
   if (f.mapping === "conflict") where.id = { in: await conflictControlIds() };
   if (f.mapping === "review") where.id = { in: [...(await controlsNeedingReview()).keys()] };
+  if (f.mapping === "update") where.id = { in: [...(await controlFrameworkUpdates()).byControl.keys()] };
 
   const sortKey = (SORTS as readonly string[]).includes(f.sort ?? "") ? f.sort! : "controlName";
   const [rows, total] = await Promise.all([
@@ -65,8 +85,8 @@ export async function listControls(f: ControlFilters) {
     prisma.ccfControl.count({ where }),
   ]);
   // Controls whose framework mapping is affected by a new version and awaits review.
-  const review = await controlsNeedingReview(rows.map((r) => r.id));
-  return { items: rows.map((r) => ({ ...r, review: review.get(r.id) ?? null })), total, page: f.page, pageSize: f.pageSize };
+  const [review, { byControl }] = await Promise.all([controlsNeedingReview(rows.map((r) => r.id)), controlFrameworkUpdates(rows.map((r) => r.id))]);
+  return { items: rows.map((r) => ({ ...r, review: review.get(r.id) ?? null, frameworkUpdates: byControl.get(r.id) ?? [] })), total, page: f.page, pageSize: f.pageSize };
 }
 
 export async function controlFacets() {
@@ -96,6 +116,13 @@ export async function controlFacets() {
     categories: cats.filter((c) => c.category).map((c) => ({ value: c.category!, count: c._count._all })).sort((a, b) => a.value.localeCompare(b.value)),
     scopes: scopes.filter((c) => c.scope).map((c) => ({ value: c.scope!, count: c._count._all })).sort((a, b) => b.count - a.count),
     prefixes: prefixes.map((c) => ({ value: c.domainPrefix, count: c._count._all })).sort((a, b) => a.value.localeCompare(b.value)),
+    // Mapped documents with a newer version, and how many controls each affects.
+    updates: await (async () => {
+      const { updates, byControl } = await controlFrameworkUpdates();
+      return [...updates.values()]
+        .map((u) => ({ ...u, controls: [...byControl.values()].filter((l) => l.some((x) => x.frameworkId === u.frameworkId)).length }))
+        .filter((u) => u.controls > 0).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.controls - a.controls);
+    })(),
   };
 }
 

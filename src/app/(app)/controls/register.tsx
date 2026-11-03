@@ -4,7 +4,7 @@ import { useNavigate } from "@/components/shell/nav-progress";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
-import { FileSpreadsheet, GitCompareArrows, History, Search, Upload, X } from "lucide-react";
+import { ArrowRight, BellRing, FileSpreadsheet, GitCompareArrows, History, Search, X } from "lucide-react";
 import { EmptyState, Mono, Page, PageHeader } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,10 +19,22 @@ import { formatDateTime, formatNumber } from "@/lib/utils";
 import { TERMS } from "@/lib/terms";
 import { ClientControlActions } from "@/components/client-control-actions";
 
+type UpdateKind = "READY" | "AVAILABLE" | "NEWER_IN_LIBRARY";
+interface FrameworkUpdate { frameworkId: string; short: string; from: string | null; to: string | null; latest: string | null; kind: UpdateKind }
+
+/** How far along each kind of framework update is, as the client sees it. */
+const UPDATE_KIND: Record<UpdateKind, { badge: string; tone: "warning" | "info"; line: (u: FrameworkUpdate) => string }> = {
+  READY: { badge: "Update ready", tone: "warning", line: (u) => `${u.short}: version ${u.to ?? "new"} is released and ready to install` },
+  NEWER_IN_LIBRARY: { badge: "Newer version", tone: "warning", line: (u) => `Mapped to ${u.short}; ${u.latest ?? `version ${u.to}`} is in the library` },
+  AVAILABLE: { badge: "New version", tone: "info", line: (u) => `${u.short}: version ${u.to ?? "new"} published, not yet in the library` },
+};
+const KIND_ORDER: UpdateKind[] = ["READY", "NEWER_IN_LIBRARY", "AVAILABLE"];
+
 interface ControlRow {
   id: string; controlName: string; title: string | null; category: string | null; subCategory: string | null; scope: string | null;
   technicalType: string | null; productTeamFacing: string | null;
   review: { updateId: string; label: string; count: number } | null;
+  frameworkUpdates: FrameworkUpdate[];
   _count: { testProcedures: number; evidence: number; frameworkReferences: number; obligations: number };
 }
 
@@ -55,15 +67,27 @@ export function ControlRegister() {
     queryFn: () => apiGet<{
       frameworks: { family: string; controls: number; versions: { id: string; short: string; controls: number }[] }[];
       categories: { value: string; count: number }[]; scopes: { value: string; count: number }[]; prefixes: { value: string; count: number }[];
+      updates: (FrameworkUpdate & { controls: number })[];
     }>("/api/controls?view=facets"),
   });
   const fam = facets.data?.frameworks.find((f) => f.family === s.family);
 
   const columns = useMemo<ColumnDef<ControlRow, unknown>[]>(() => [
     { id: "controlName", header: "Control ID", size: 160, cell: ({ row }) => <span className="flex items-center gap-2"><Mono className="whitespace-nowrap font-medium text-fg">{row.original.controlName}</Mono>{row.original.review && <Badge tone="warning" title={`${row.original.review.label}: ${row.original.review.count} mapping change(s) to review`}><GitCompareArrows /> Mapping affected</Badge>}</span> },
+    {
+      id: "frameworkUpdate", header: "Framework update", size: 190, enableSorting: false,
+      cell: ({ row }) => {
+        const us = [...row.original.frameworkUpdates].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
+        if (!us.length) return <span className="text-xs text-subtle">—</span>;
+        const k = UPDATE_KIND[us[0].kind];
+        return <Badge tone={k.tone} title={us.map((u) => UPDATE_KIND[u.kind].line(u)).join("\n")}><BellRing /> {k.badge}{us.length > 1 ? ` · ${us.length} frameworks` : `: ${us[0].short}${us[0].to ? ` → ${us[0].to}` : ""}`}</Badge>;
+      },
+    },
     { id: "title", header: "Control title", cell: ({ row }) => <div className="line-clamp-2 text-fg">{row.original.title ?? <span className="text-subtle">No title</span>}</div> },
   ], []);
 
+  const updates = facets.data?.updates ?? [];
+  const affected = updates.reduce((n, u) => Math.max(n, u.controls), 0);
   const active = !!(s.q || s.mapping || s.family || s.category || s.scope || s.prefix);
   const opts = (xs?: { value: string; count: number }[]) => (xs ?? []).map((x) => ({ value: x.value, label: x.value, hint: formatNumber(x.count) }));
 
@@ -98,6 +122,30 @@ export function ControlRegister() {
           <Badge tone="outline"><History /> Last sync {formatDateTime(lastSync.data.completedAt)} · {lastSync.data.fileName}</Badge>
         ) : null}
       />
+      {updates.length > 0 && (
+        <Card className="mb-4 border-warning/50">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+            <BellRing className="size-4 text-warning" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-semibold text-fg">Framework updates affect the client&apos;s controls</div>
+              <div className="text-xs text-muted">{updates.length} mapped framework(s) have a newer version; {affected > 0 && `up to ${formatNumber(affected)} control(s) need their mapping checked.`}</div>
+            </div>
+            <Button size="sm" variant={s.mapping === "update" ? "primary" : "secondary"} onClick={() => set({ mapping: s.mapping === "update" ? "" : "update", frameworkId: "", family: "", page: "1" })}>
+              {s.mapping === "update" ? "Show all controls" : "Show affected controls"}
+            </Button>
+          </div>
+          <ul className="divide-y divide-border text-xs">
+            {updates.map((u) => (
+              <li key={u.frameworkId} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
+                <Badge tone={UPDATE_KIND[u.kind].tone}>{UPDATE_KIND[u.kind].badge}</Badge>
+                <span className="min-w-0 flex-1 text-fg-2">{UPDATE_KIND[u.kind].line(u)}{u.from && <span className="text-subtle"> · client mapped to {u.from}</span>}</span>
+                <button onClick={() => set({ mapping: "", family: "", frameworkId: u.frameworkId, page: "1" })} className="font-medium text-accent hover:underline">{formatNumber(u.controls)} control{u.controls === 1 ? "" : "s"}</button>
+                <Link href={`/sources/${u.frameworkId}`} className="inline-flex items-center gap-1 text-muted hover:text-fg">{u.kind === "READY" ? "Install update" : "View source"} <ArrowRight className="size-3" /></Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
           <div className="relative min-w-[240px] flex-1">
@@ -121,7 +169,7 @@ export function ControlRegister() {
           <Select value={s.prefix} onChange={(v) => set({ prefix: v })} allLabel="All domains" placeholder="Domain" options={opts(facets.data?.prefixes)} aria-label="Filter by control domain" />
           <Select
             value={s.mapping === "review" ? "" : s.mapping} onChange={(v) => set({ mapping: v })} allLabel="Any mapping status" placeholder="Mapping status"
-            options={[{ value: "mapped", label: "Mapped" }, { value: "unmapped", label: "Unmapped" }, { value: "conflict", label: "Mapping conflict" }]}
+            options={[{ value: "mapped", label: "Mapped" }, { value: "unmapped", label: "Unmapped" }, { value: "conflict", label: "Mapping conflict" }, { value: "update", label: "Framework update pending" }]}
             aria-label="Filter by mapping status"
           />
           <Button variant={s.mapping === "review" ? "primary" : "secondary"} size="sm" onClick={() => set({ mapping: s.mapping === "review" ? "" : "review", page: "1" })}><GitCompareArrows /> Needs review</Button>

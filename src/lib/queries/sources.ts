@@ -14,7 +14,7 @@ export function publisherOf(name: string) {
   if (/^IEC/.test(fam)) return "IEC";
   if (/^CIS/.test(fam)) return "CIS";
   if (fam === "GDPR" || fam === "EU AI Act") return "European Union";
-  if (/^CSA/.test(fam)) return "Cloud Security Alliance";
+  if (/^CSA|Cloud Controls Matrix/.test(fam)) return "Cloud Security Alliance";
   if (/^COBIT/.test(fam)) return "ISACA";
   if (fam === "21 CFR Part 11") return "US FDA";
   if (fam === "SOX") return "US Congress";
@@ -117,6 +117,26 @@ async function pendingImports(frameworkId?: string) {
     pending.set(x.matchFrameworkId!, { id: x.id, version: det.libraryVersion ?? null, uploadedAt: x.createdAt.toISOString(), released: !!det.release });
   }
   return pending;
+}
+
+/** READY: released by an admin, install with Update. AVAILABLE: newer version at the publisher. NEWER_IN_LIBRARY: a later version is already installed. */
+export type FrameworkUpdateKind = "READY" | "AVAILABLE" | "NEWER_IN_LIBRARY";
+export interface FrameworkUpdate { frameworkId: string; short: string; from: string | null; to: string | null; latest: string | null; kind: FrameworkUpdateKind }
+
+/** Documents with a newer version, by how far along the update is. Used to flag the client controls mapped to them. */
+export async function frameworkUpdates(): Promise<Map<string, FrameworkUpdate>> {
+  const [pending, fws] = await Promise.all([pendingImports(), prisma.framework.findMany({ select: { id: true, name: true, sourceId: true, family: true, versionLabel: true } })]);
+  const checks = await latestChecks(fws.map((f) => f.id));
+  const out = new Map<string, FrameworkUpdate>();
+  for (const f of fws) {
+    const p = pending.get(f.id), c = checks.get(f.id);
+    const newest = fws.filter((x) => x.family && x.family === f.family).sort((a, b) => cmpVersion(a.versionLabel, b.versionLabel)).at(-1);
+    const base = { frameworkId: f.id, short: shortName(f.name), from: versionOf(f) };
+    if (p?.released) out.set(f.id, { ...base, to: p.version, latest: null, kind: "READY" });
+    else if (newest && newest.id !== f.id) out.set(f.id, { ...base, to: versionOf(newest), latest: shortName(newest.name), kind: "NEWER_IN_LIBRARY" });
+    else if (c?.status === "UPDATE_AVAILABLE") out.set(f.id, { ...base, to: c.latestVersion, latest: null, kind: "AVAILABLE" });
+  }
+  return out;
 }
 
 /** Documents with a released update waiting for a user to click Update (the Sources badge). */
