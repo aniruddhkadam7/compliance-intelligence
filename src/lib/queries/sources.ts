@@ -133,7 +133,11 @@ export async function listSources() {
     JOIN "Citation" c ON c.id = o."citationId" GROUP BY c."frameworkId"`;
   const controls = new Map(mapped.map((m) => [m.frameworkId, Number(m.n)]));
   const pending = await pendingImports();
-  return shaped.map((d) => ({ ...d, clientControls: controls.get(d.id) ?? 0, pendingImport: pending.get(d.id) ?? null, latestCheck: checks.get(d.id) ?? null, comparison: cmp.has(d.id) ? comparisonSummary(cmp.get(d.id)!) : null }));
+  // Version update that installed each document (its comparison with the version it replaced), newest first.
+  const installs = await prisma.aiIngestion.findMany({ where: { status: "PUBLISHED", publishedFrameworkId: { in: shaped.map((d) => d.id) } }, orderBy: { updatedAt: "desc" }, select: { id: true, publishedFrameworkId: true } });
+  const installed = new Map<string, string>();
+  for (const x of installs) if (!installed.has(x.publishedFrameworkId!)) installed.set(x.publishedFrameworkId!, x.id);
+  return shaped.map((d) => ({ ...d, clientControls: controls.get(d.id) ?? 0, pendingImport: pending.get(d.id) ?? null, installedUpdate: installed.get(d.id) ?? null, latestCheck: checks.get(d.id) ?? null, comparison: cmp.has(d.id) ? comparisonSummary(cmp.get(d.id)!) : null }));
 }
 
 const CHECK_SELECT = { id: true, frameworkId: true, method: true, sourceUrl: true, status: true, approvedVersion: true, latestVersion: true, publicationDate: true, latestDocumentUrl: true, evidence: true, message: true, checkedBy: true, checkedAt: true } as const;
@@ -170,6 +174,7 @@ export async function getSource(id: string) {
   return {
     ...base,
     aiImport: aiImport ? { ...aiImport, updatedAt: aiImport.updatedAt.toISOString() } : null,
+    installedUpdate: aiImport?.id ?? null,
     transitions: Object.fromEntries(transitions.map((t) => [t.status, Number(t.n)])),
     clientControls,
     pendingImport: (await pendingImports(id)).get(id) ?? null,

@@ -18,6 +18,7 @@ import { CHECK_METHOD, UPDATE_CHECK } from "@/lib/updates/labels";
 import { TERMS } from "@/lib/terms";
 import { cn, formatDate, formatDateTime, formatNumber, formatRelative } from "@/lib/utils";
 import type { SourceRow } from "@/lib/queries/sources";
+import { VersionChanges } from "./version-changes";
 
 const DEFAULTS = { q: "", type: "", publisher: "", applicability: "", status: "", open: "" };
 type Check = NonNullable<SourceRow["latestCheck"]>;
@@ -249,10 +250,15 @@ export function SourcesCatalog({ docs, role }: { docs: SourceRow[]; role: Role }
 }
 
 /** Evidence behind the latest check, and the "New framework version detected" notice. */
-export function CheckDetails({ d, compact = false }: { d: Pick<SourceRow, "id" | "short" | "publisher" | "version" | "documentUrl" | "latestCheck">; compact?: boolean }) {
+export function CheckDetails({ d, compact = false }: { d: Pick<SourceRow, "id" | "short" | "publisher" | "version" | "documentUrl" | "latestCheck"> & { installedUpdate?: string | null }; compact?: boolean }) {
   const c = d.latestCheck;
   if (!c)
-    return <p className="text-xs text-muted">This document has not been checked yet. Use <b>Check for Updates</b> to verify the latest version at the publisher&apos;s official source.</p>;
+    return (
+      <div className="space-y-3">
+        <p className="text-xs text-muted">This document has not been checked yet. Use <b>Check for Updates</b> to verify the latest version at the publisher&apos;s official source.</p>
+        {d.installedUpdate && <VersionChanges ingestionId={d.installedUpdate} />}
+      </div>
+    );
   const ev = (c.evidence ?? {}) as Record<string, unknown>;
   const quotes = [["Version statement", ev.versionQuote], ["Newer version statement", ev.newerQuote], ["Date statement", ev.dateQuote], ["Publisher data", ev.statement]].filter(([, v]) => typeof v === "string" && v) as [string, string][];
   return (
@@ -289,6 +295,7 @@ export function CheckDetails({ d, compact = false }: { d: Pick<SourceRow, "id" |
           {typeof ev.rejected === "string" && <div className="mt-1 text-warning">{ev.rejected}</div>}
         </div>
       )}
+      {d.installedUpdate && <VersionChanges ingestionId={d.installedUpdate} />}
     </div>
   );
 }

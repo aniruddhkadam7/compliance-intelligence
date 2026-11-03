@@ -76,6 +76,49 @@ export function relateVersions(prev: ComparableSection[], cur: ComparableSection
   return out;
 }
 
+/**
+ * Reconciles identifier/wording relations with a publisher-supplied crosswalk (old identifier -> new identifier).
+ * Requirements the heuristics left as removed/added are linked where the publisher relates them, grouped into
+ * renumbered (1:1), split (1:n) or combined (n:1 and n:m). Same-identifier pairs the crosswalk also lists are
+ * marked as confirmed. Requirements the crosswalk does not relate stay removed/added.
+ */
+export function applyCrosswalk(rel: Relation[], edges: { from: string; to: string }[], publisher: string): Relation[] {
+  const removed = new Map(rel.filter((r) => r.kind === "REMOVED").map((r) => [idKey(r.from[0]), r]));
+  const added = new Map(rel.filter((r) => r.kind === "ADDED").map((r) => [idKey(r.to[0]), r]));
+  const listed = new Set(edges.map((e) => `${idKey(e.from)}|${idKey(e.to)}`));
+  const links = edges.filter((e) => removed.has(idKey(e.from)) && added.has(idKey(e.to)));
+
+  // Connected groups of old and new identifiers.
+  const parent = new Map<string, string>();
+  const find = (x: string): string => { const p = parent.get(x) ?? x; if (p === x) return x; const r = find(p); parent.set(x, r); return r; };
+  for (const e of links) parent.set(find(`o:${idKey(e.from)}`), find(`n:${idKey(e.to)}`));
+  const groups = new Map<string, { from: Set<string>; to: Set<string> }>();
+  for (const e of links) {
+    const g = groups.get(find(`o:${idKey(e.from)}`)) ?? { from: new Set<string>(), to: new Set<string>() };
+    g.from.add(idKey(e.from)); g.to.add(idKey(e.to));
+    groups.set(find(`o:${idKey(e.from)}`), g);
+  }
+
+  const used = new Set<Relation>();
+  const out: Relation[] = [];
+  for (const g of groups.values()) {
+    const from = [...g.from].map((k) => removed.get(k)!), to = [...g.to].map((k) => added.get(k)!);
+    from.forEach((r) => used.add(r)); to.forEach((r) => used.add(r));
+    const f = from.map((r) => r.from[0]), t = to.map((r) => r.to[0]);
+    const kind: RelationKind = f.length === 1 && t.length === 1 ? "RENUMBERED" : f.length === 1 ? "SPLIT" : "COMBINED";
+    out.push({
+      kind, from: f, to: t, confidence: kind === "RENUMBERED" ? 0.9 : 0.8,
+      explanation: kind === "RENUMBERED" ? `${publisher} relates ${f[0]} to ${t[0]} as the same requirement under a new identifier.`
+        : kind === "SPLIT" ? `${publisher} relates ${f[0]} to ${t.join(", ")}: the requirement is now covered by several.`
+        : `${publisher} relates ${f.join(", ")} to ${t.join(", ")}: the requirements are now covered together.`,
+    });
+  }
+  return [
+    ...rel.filter((r) => !used.has(r)).map((r) => (r.from.length === 1 && r.to.length === 1 && (r.kind === "MODIFIED" || r.kind === "UNCHANGED") && listed.has(`${idKey(r.from[0])}|${idKey(r.to[0])}`) ? { ...r, explanation: `${r.explanation} Confirmed by ${publisher}.` } : r)),
+    ...out,
+  ];
+}
+
 export function relationCounts(rel: Relation[]) {
   const c: Record<RelationKind, number> = { UNCHANGED: 0, MODIFIED: 0, RENUMBERED: 0, SPLIT: 0, COMBINED: 0, ADDED: 0, REMOVED: 0 };
   rel.forEach((r) => c[r.kind]++);

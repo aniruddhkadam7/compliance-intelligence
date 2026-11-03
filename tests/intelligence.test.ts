@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { compareVersions } from "../src/lib/updates/check";
-import { relateVersions, relationCounts } from "../src/lib/sources/relations";
+import { applyCrosswalk, relateVersions, relationCounts } from "../src/lib/sources/relations";
 import { parseHeading, compareVersions as compareSections, comparisonSummary } from "../src/lib/sources/headings";
 import { buildTemplate, normaliseClientTemplate } from "../src/lib/ingest/client-template";
 import { parseWorkbook } from "../src/lib/ingest/parse";
@@ -100,5 +100,26 @@ describe("spreadsheet structure", () => {
   test("the header row is found below title rows", () => {
     const g = [["NIST Catalog", null, null], [null, null, null], ["Control ID", "Name", "Control Text"], ["AC-1", "Policy", "Develop a policy"], ["AC-2", "Accounts", "Manage accounts"], ["AC-3", "Enforcement", "Enforce access"]];
     assert.equal(findHeader(g), 2);
+  });
+});
+
+describe("publisher crosswalk", () => {
+  const rel = (kind: "REMOVED" | "ADDED", id: string) => (kind === "REMOVED" ? { kind, from: [id], to: [], confidence: 1, explanation: "" } : { kind, from: [], to: [id], confidence: 1, explanation: "" });
+  const base = [rel("REMOVED", "ID.BE-4"), rel("REMOVED", "ID.SC-1"), rel("REMOVED", "ID.SC-2"), rel("REMOVED", "PR.XX-9"), rel("ADDED", "GV.OC-04"), rel("ADDED", "GV.SC-01"), rel("ADDED", "GV.SC-02"), rel("ADDED", "GV.NEW-01")];
+  const edges = [{ from: "ID.BE-4", to: "GV.OC-04" }, { from: "ID.SC-1", to: "GV.SC-01" }, { from: "ID.SC-1", to: "GV.SC-02" }, { from: "ID.SC-2", to: "GV.SC-02" }];
+  const out = applyCrosswalk(base, edges, "NIST");
+  test("one-to-one, one-to-many and many-to-many correspondences become renumbered, split and combined", () => {
+    assert.equal(out.find((r) => r.from.includes("ID.BE-4"))?.kind, "RENUMBERED");
+    const g = out.find((r) => r.from.includes("ID.SC-1"))!;
+    assert.deepEqual([g.kind, g.from.sort(), g.to.sort()], ["COMBINED", ["ID.SC-1", "ID.SC-2"], ["GV.SC-01", "GV.SC-02"]]);
+  });
+  test("requirements the crosswalk does not relate stay removed or added", () => {
+    const c = relationCounts(out);
+    assert.equal(c.REMOVED, 1);
+    assert.equal(c.ADDED, 1);
+  });
+  test("same-identifier pairs listed by the crosswalk are marked as confirmed", () => {
+    const same = [{ kind: "MODIFIED" as const, from: ["DE.CM-1"], to: ["DE.CM-01"], confidence: 0.3, explanation: "Same identifier." }];
+    assert.match(applyCrosswalk(same, [{ from: "DE.CM-1", to: "DE.CM-01" }], "NIST")[0].explanation, /Confirmed by NIST/);
   });
 });
