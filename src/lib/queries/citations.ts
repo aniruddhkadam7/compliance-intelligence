@@ -8,8 +8,7 @@ export const CitationFilters = ListParams.extend({
   frameworkId: z.string().max(40).optional().default(""),
   family: z.string().max(80).optional().default(""),
   version: z.string().max(40).optional().default(""),
-  requirementId: z.string().max(20).optional().default(""),
-  field: z.enum(["all", "sectionId", "sectionName", "text", "requirement"]).optional().default("all"),
+  field: z.enum(["all", "sectionId", "sectionName", "text"]).optional().default("all"),
   mapped: z.enum(["", "yes", "no"]).optional().default(""),
 });
 export type CitationFilters = z.infer<typeof CitationFilters>;
@@ -70,6 +69,8 @@ export function sectionLabel(name: string) {
   return parts.length > 1 ? parts[parts.length - 1] : name;
 }
 
+const relatedSelect = { id: true, sourceSectionId: true, sectionName: true, framework: { select: { id: true, name: true } } } as const;
+
 export async function getCitation(id: string) {
   const c = await prisma.citation.findFirst({
     where: { OR: [{ id }, { sourceSectionId: id }] },
@@ -80,11 +81,20 @@ export async function getCitation(id: string) {
         orderBy: { control: { controlName: "asc" } },
       },
       procedures: { include: { testProcedure: { select: { procedureId: true, control: { select: { controlName: true } } } } } },
+      relationsFrom: { select: { id: true, kind: true, status: true, note: true, toSourceId: true, toCitation: { select: relatedSelect } } },
+      relationsTo: { select: { id: true, kind: true, status: true, note: true, fromSourceId: true, fromCitation: { select: relatedSelect } } },
     },
   });
   if (!c) return null;
+  const { relationsFrom, relationsTo, ...rest } = c;
+  // Supplied relationships only: version transitions and cross-framework links, in either direction.
+  const related = [
+    ...relationsFrom.map((r) => ({ id: r.id, kind: r.kind, status: r.status, note: r.note, direction: "to" as const, sourceId: r.toSourceId, citation: r.toCitation })),
+    ...relationsTo.map((r) => ({ id: r.id, kind: r.kind, status: r.status, note: r.note, direction: "from" as const, sourceId: r.fromSourceId, citation: r.fromCitation })),
+  ].map((r) => ({ ...r, citation: r.citation ? { ...r.citation, framework: { ...r.citation.framework, short: shortName(r.citation.framework.name) } } : null }));
   return {
-    ...c,
+    ...rest,
+    related,
     sectionPath: c.sectionName.split(" - "),
     framework: { ...c.framework, short: shortName(c.framework.name) },
   };

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
-import { AlertTriangle } from "lucide-react";
-import { Page, PageHeader, StatStrip } from "@/components/common";
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { AlertTriangle, GitCompareArrows } from "lucide-react";
+import { Page, PageHeader } from "@/components/common";
 import { getControl } from "@/lib/queries/controls";
 import { ControlTabs } from "./tabs";
 
@@ -11,7 +11,6 @@ export default async function ControlPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const c = await getControl(decodeURIComponent(id));
   if (!c) notFound();
-  const obligations = new Set(c.trace.flatMap((f) => f.citations.map((o) => o.id))).size;
 
   return (
     <Page>
@@ -19,16 +18,17 @@ export default async function ControlPage({ params }: { params: Promise<{ id: st
         breadcrumbs={[{ label: "Internal CCF Mapping", href: "/controls" }, { label: c.controlName }]}
         title={<span className="flex items-center gap-2"><span className="font-mono">{c.controlName}</span></span>}
         description={c.title ?? undefined}
-        meta={
-          <>
-            {c.category && <Badge>{c.category}</Badge>}
-            {c.subCategory && <Badge tone="outline">{c.subCategory}</Badge>}
-            {c.scope && <Badge tone="info">{c.scope}</Badge>}
-            {c.technicalType && <Badge tone="outline">{c.technicalType}</Badge>}
-            {c.gskReviewStatus && <Badge tone={c.gskReviewStatus === "GSK approved" ? "success" : "neutral"}>{c.gskReviewStatus}</Badge>}
-          </>
-        }
       />
+      {c.review && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-md border border-warning/30 bg-warning-soft px-3 py-2.5 text-[13px] text-fg">
+          <GitCompareArrows className="mt-0.5 size-4 shrink-0 text-warning" />
+          <div>
+            <span className="font-medium">Framework version change: {c.review.label}.</span> {c.review.count} proposed mapping change{c.review.count === 1 ? "" : "s"} await review.
+            The test procedures are unchanged; only the framework mapping and citations differ.{" "}
+            <Link href={`/change-analytics?update=${c.review.updateId}&control=${encodeURIComponent(c.controlName)}`} className="font-medium text-accent hover:underline">Review in Change Analytics</Link>
+          </div>
+        </div>
+      )}
       {c.conflict && (
         <div className="mb-4 flex items-start gap-2.5 rounded-md border border-warning/30 bg-warning-soft px-3 py-2.5 text-[13px] text-fg">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
@@ -38,15 +38,6 @@ export default async function ControlPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
       )}
-      <StatStrip
-        className="mb-4 xl:grid-cols-4"
-        items={[
-          { label: "Mapped obligations", value: obligations, sub: "Regulatory obligations linked to this control" },
-          { label: "Frameworks reached", value: c.trace.length, sub: "Distinct frameworks" },
-          { label: "Test procedures", value: c.testProcedures.length, sub: "Across workbook columns" },
-          { label: "Evidence statements", value: c.evidence.length, sub: "Across workbook columns" },
-        ]}
-      />
       <ControlTabs control={JSON.parse(JSON.stringify(c))} />
     </Page>
   );

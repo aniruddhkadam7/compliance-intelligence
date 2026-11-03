@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { prisma } from "../src/lib/db";
 import { confirmImport, type ImportKind } from "../src/lib/ingest/persist";
+import { ensureConnectors } from "../src/lib/connectors/registry";
 
 const KINDS: Record<string, ImportKind> = { library: "LIBRARY", controls: "CLIENT_CONTROLS", relationships: "RELATIONSHIPS" };
 
@@ -13,6 +14,7 @@ async function main() {
   const path = resolve(process.argv[3] ?? "data/source/CCF Demonstration.xlsx");
   const started = Date.now();
   const out = await confirmImport(prisma, kind, { name: basename(path), buffer: readFileSync(path) }, "cli");
+  if (kind === "LIBRARY" && out.status === "COMPLETED") await ensureConnectors();
 
   console.log(`${kind} import ${out.status} (${out.jobId}) in ${Date.now() - started} ms`);
   console.table(out.counts);

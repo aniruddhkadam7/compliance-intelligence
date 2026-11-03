@@ -155,7 +155,7 @@ export function controlFields(get: (header: string) => string | null) {
 export interface NormalisedDataset {
   frameworks: {
     id: string; sourceId: string; name: string; description: string | null; group: string | null; type: string | null;
-    jurisdiction: string | null; licensing: string | null; documentUrl: string | null; prioritizedByGsk: boolean;
+    jurisdiction: string | null; licensing: string | null; documentUrl: string | null; prioritizedByGsk: boolean; applicability?: string | null;
     versionLabel: string | null; family: string; raw: RawRow; sourceSheet: string; sourceRow: number;
   }[];
   requirements: {

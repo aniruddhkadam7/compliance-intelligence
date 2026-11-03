@@ -12,27 +12,16 @@ import { SectionTitle } from "@/components/common";
 import { ApiError, apiSend } from "@/lib/client/api";
 import { cn, formatNumber } from "@/lib/utils";
 import { ISSUE_LABELS } from "@/lib/labels";
+import { ClientControlActions } from "@/components/client-control-actions";
 
 type Kind = "LIBRARY" | "CLIENT_CONTROLS" | "RELATIONSHIPS";
 
 const KINDS: { kind: Kind; layer: string; title: string; desc: string; confirm: string; done: (c: Record<string, number>) => string; next: string }[] = [
   {
-    kind: "LIBRARY", layer: "Global", title: "Authoritative document library",
-    desc: "Documents and their regulatory/legal obligations (“Citation Sources” sheet with Parent Source ID and Source Section ID). Adds and updates; never deletes, and never touches client data.",
-    confirm: "Documents and obligations in this file are added or updated. Nothing is deleted, and client controls and mappings are not affected.",
-    done: (c) => `Library updated: ${formatNumber(c.frameworks ?? 0)} documents, ${formatNumber(c.citations ?? 0)} obligations.`, next: "/frameworks",
-  },
-  {
     kind: "CLIENT_CONTROLS", layer: "Client", title: "Client controls",
     desc: "The client's controls and test procedures, mapped to Source Section IDs in the library. Replaces only this client's controls; the previous mapping is kept in the import history.",
     confirm: "The client's current controls and mappings are replaced by this file (the previous mapping is recorded in the import history). The global document library is not affected.",
     done: (c) => `Imported ${formatNumber(c.controls ?? 0)} controls and ${formatNumber(c.testProcedures ?? 0)} test procedures.`, next: "/controls",
-  },
-  {
-    kind: "RELATIONSHIPS", layer: "Global", title: "Source relationships",
-    desc: "Legacy → latest transitions (Legacy Source ID, Latest Source ID, Status) or cross-framework links (Source ID A, Source ID B, Relationship). Replaces only relationships of the kinds in the file.",
-    confirm: "Relationships of the kinds in this file are replaced. Documents, obligations and client data are not affected.",
-    done: (c) => `Imported ${formatNumber((c.versionTransitions ?? 0) + (c.crossFramework ?? 0))} relationships.`, next: "/version-impact",
   },
 ];
 interface Issue { severity: "ERROR" | "WARNING" | "INFO"; code: string; sheet?: string; row?: number; column?: string; message: string }
@@ -122,7 +111,7 @@ export function ImportWizard() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader title="1. Choose workbook type and file" description="Accepted: .xlsx, up to 4 MB (Vercel request limit). The original file is never modified." />
+        <CardHeader title="1. Choose the client control file" description="Use the Excel template (.xlsx, up to 4 MB). The file is validated and previewed before anything is imported; the original is never modified." actions={<ClientControlActions empty={false} showUpload={false} />} />
         <CardBody className="space-y-3">
           <div className="grid gap-2 md:grid-cols-3">
             {KINDS.map((k) => (

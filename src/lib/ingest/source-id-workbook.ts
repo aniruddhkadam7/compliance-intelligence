@@ -5,7 +5,7 @@
 //   "CCFv2"                      client controls (same columns as the CCF register)
 //   mapping sheet                Control ID | Test Procedure ID | Test Procedure | Source Section ID (one or more) | Source Section Name
 //   "Authoritative Sources"      framework list (checked against the citation sheet)
-//   "ArC Parent Sources (Metadata)"  optional framework metadata (type, group, jurisdiction, URL), matched by name
+//   "ArC Parent Sources (Metadata)"  optional framework metadata (type, group, jurisdiction, URL, applicability), matched by name
 //
 // Pure functions: no database access.
 
@@ -125,7 +125,7 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
         fw = {
           id: id(), sourceId: parent, name: source,
           description: g("Description"), group: g("Group"), type: g("Type"), jurisdiction: g("Jurisdiction"), licensing: g("Licensing"),
-          documentUrl: g("Document URL"), prioritizedByGsk: m ? /^y(es)?$/i.test(g("Prioritized by GSK?") ?? "") : false,
+          documentUrl: g("Document URL"), applicability: g("IT/OT/AI Applicability") ?? g("Applicability"), prioritizedByGsk: m ? /^y(es)?$/i.test(g("Prioritized by GSK?") ?? "") : false,
           versionLabel: deriveVersion(source), family: deriveFamily(source),
           raw: { "Parent Source ID": parent, "Authoritative Source": source }, sourceSheet: obSheet!.name, sourceRow: rowNumber,
         };

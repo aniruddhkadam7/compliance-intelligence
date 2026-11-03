@@ -70,7 +70,7 @@ export function FrameworkTabs({ frameworkId, overview }: { frameworkId: string; 
             selectedId={s.citation}
           />
         </Card>
-        <CitationDetailSheet citationId={s.citation || null} onClose={() => set({ citation: "", page: s.page })} />
+        <CitationDetailSheet citationId={s.citation || null} onClose={() => set({ citation: "", page: s.page })} onOpen={(id) => set({ citation: id, page: s.page })} />
       </TabsContent>
       <TabsContent value="controls">
         <Card>

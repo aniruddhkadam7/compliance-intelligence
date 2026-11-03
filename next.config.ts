@@ -14,6 +14,8 @@ const nextConfig: NextConfig = {
   // A lockfile in a parent folder otherwise makes Next infer the wrong workspace root.
   outputFileTracingRoot: path.join(__dirname),
   poweredByHeader: false,
+  // Keep visited pages in the client router cache; imports and resets call router.refresh().
+  experimental: { staleTimes: { dynamic: 300, static: 600 } },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

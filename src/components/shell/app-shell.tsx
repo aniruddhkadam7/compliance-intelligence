@@ -15,13 +15,13 @@ export function AppShell({ user, role, badges, children }: { user: string; role:
     <div className="flex h-dvh overflow-hidden">
       <NavProgress />
       <div className="hidden lg:block">
-        <Sidebar badges={badges} />
+        <Sidebar badges={badges} role={role} />
       </div>
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-[#0c1b33]/30" onClick={() => setMobileOpen(false)} />
           <div className="absolute inset-y-0 left-0 shadow-pop">
-            <Sidebar badges={badges} onNavigate={() => setMobileOpen(false)} />
+            <Sidebar badges={badges} role={role} onNavigate={() => setMobileOpen(false)} />
           </div>
         </div>
       )}

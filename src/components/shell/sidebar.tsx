@@ -1,12 +1,15 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { warmRoute } from "@/lib/client/prefetch";
 import { cn } from "@/lib/utils";
 import { EyLogo } from "./ey-logo";
 import { NAV } from "./nav";
 
-export function Sidebar({ badges, onNavigate }: { badges: { updates: number }; onNavigate?: () => void }) {
+export function Sidebar({ badges, role, onNavigate }: { badges: { updates: number }; role?: string; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const qc = useQueryClient();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
 
   return (
@@ -23,13 +26,16 @@ export function Sidebar({ badges, onNavigate }: { badges: { updates: number }; o
         {NAV.map((group) => (
           <div key={group.section}>
             <div className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-subtle">{group.section}</div>
-            {group.items.map((item) => {
+            {group.items.filter((item) => !item.adminOnly || role === "admin").map((item) => {
               const active = isActive(item.href);
               const count = item.badgeKey ? badges[item.badgeKey] : 0;
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  prefetch
+                  onMouseEnter={() => warmRoute(qc, item.href)}
+                  onFocus={() => warmRoute(qc, item.href)}
                   onClick={onNavigate}
                   className={cn(
                     "group flex h-10 items-center gap-3 rounded-md px-2.5 text-[14px] font-medium transition-colors",

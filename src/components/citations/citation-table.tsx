@@ -21,7 +21,6 @@ export interface CitationQuery {
   frameworkId?: string;
   family?: string;
   version?: string;
-  requirementId?: string;
   mapped?: string;
   sort?: string;
   dir?: string;

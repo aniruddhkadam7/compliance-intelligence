@@ -2,6 +2,9 @@
 // optional count of client controls mapped to the document (client layer, read-only).
 import { prisma } from "@/lib/db";
 import { deriveFamily, shortName } from "@/lib/frameworks";
+import { MECHANISM_LABEL, type Mechanism } from "@/lib/connectors/types";
+import { applicabilityOf } from "@/lib/sources/applicability";
+import { compareVersions, comparisonSummary } from "@/lib/sources/headings";
 
 export function publisherOf(name: string) {
   const fam = deriveFamily(name);
@@ -10,6 +13,11 @@ export function publisherOf(name: string) {
   if (/^IEC/.test(fam)) return "IEC";
   if (/^CIS/.test(fam)) return "CIS";
   if (fam === "GDPR" || fam === "EU AI Act") return "European Union";
+  if (/^CSA/.test(fam)) return "Cloud Security Alliance";
+  if (/^COBIT/.test(fam)) return "ISACA";
+  if (fam === "21 CFR Part 11") return "US FDA";
+  if (fam === "SOX") return "US Congress";
+  if (fam === "China PIPL") return "China NPC";
   return "Other";
 }
 
@@ -64,23 +72,81 @@ function shape(f: Awaited<ReturnType<typeof load>>[number], all: { id: string; n
     version: f.versionLabel,
     previousVersion: previous ? { id: previous.id, short: shortName(previous.name), version: previous.versionLabel } : null,
     familyVersions: family.map((x) => ({ id: x.id, short: shortName(x.name), version: x.versionLabel })),
+    // Predecessor as stated by the publisher, recorded even when its text is not loaded.
+    recordedPrevious: f.previousVersionNote ? { version: f.previousVersion, note: f.previousVersionNote, source: f.previousVersionSource ?? f.documentUrl } : null,
     obligations: f._count.citations,
     publishedDate: f.connectors.flatMap((c) => c.checks.map((k) => reportedDate(k.details))).find(Boolean) ?? null,
     monitoring: f.connectors.map((c) => ({ id: c.id, name: c.name, mechanism: c.mechanism, lastCheckedAt: c.lastCheckedAt?.toISOString() ?? null, lastStatus: c.lastStatus, currentVersion: c.currentVersion })),
     updates,
     updateStatus: pending ? "REVIEW" : f.connectors.length ? "MONITORED" : "NOT_MONITORED",
+    pendingReview: pending,
+    applicability: applicabilityOf(f),
+    collection: f.connectors.length
+      ? { automated: true, methods: [...new Set(f.connectors.map((c) => MECHANISM_LABEL[c.mechanism as Mechanism] ?? c.mechanism))] }
+      : { automated: false, methods: ["Library import (Excel workbook)"] },
+    loadedAt: f.updatedAt.toISOString(),
   };
+}
+
+const SECTION = { sourceSectionId: true, sectionName: true, sectionText: true } as const;
+
+/** Structural comparison of each document with its previous loaded version (headings and identifiers). */
+async function comparisons(pairs: { id: string; previousId: string }[]) {
+  if (!pairs.length) return new Map<string, ReturnType<typeof compareVersions>>();
+  const ids = [...new Set(pairs.flatMap((p) => [p.id, p.previousId]))];
+  const rows = await prisma.citation.findMany({ where: { frameworkId: { in: ids } }, select: { ...SECTION, frameworkId: true } });
+  const by = new Map<string, typeof rows>();
+  for (const r of rows) by.set(r.frameworkId, [...(by.get(r.frameworkId) ?? []), r]);
+  return new Map(pairs.map((p) => [p.id, compareVersions(by.get(p.previousId) ?? [], by.get(p.id) ?? [])]));
+}
+
+/**
+ * Uploaded new versions not yet installed, newest per document. "released" means an admin reviewed it and
+ * users can apply it with the Update button; otherwise it is still in admin review.
+ */
+async function pendingImports(frameworkId?: string) {
+  const drafts = await prisma.aiIngestion.findMany({
+    where: { status: "READY", matchKind: "NEW_VERSION", matchFrameworkId: frameworkId ?? { not: null } },
+    orderBy: { createdAt: "desc" }, select: { id: true, matchFrameworkId: true, detected: true, createdAt: true },
+  });
+  const pending = new Map<string, { id: string; version: string | null; uploadedAt: string; released: boolean }>();
+  for (const x of drafts) {
+    if (pending.has(x.matchFrameworkId!)) continue;
+    const det = (x.detected ?? {}) as { libraryVersion?: string; release?: unknown };
+    pending.set(x.matchFrameworkId!, { id: x.id, version: det.libraryVersion ?? null, uploadedAt: x.createdAt.toISOString(), released: !!det.release });
+  }
+  return pending;
 }
 
 export async function listSources() {
   const docs = await load();
-  return docs.map((f) => shape(f, docs));
+  const shaped = docs.map((f) => shape(f, docs));
+  const cmp = await comparisons(shaped.filter((d) => d.previousVersion).map((d) => ({ id: d.id, previousId: d.previousVersion!.id })));
+  const checks = await latestChecks(shaped.map((d) => d.id));
+  // Client controls mapped to each document (client layer, if uploaded); explains why an earlier version is kept.
+  const mapped = await prisma.$queryRaw<{ frameworkId: string; n: bigint }[]>`
+    SELECT c."frameworkId", COUNT(DISTINCT o."controlId") AS n FROM "ControlObligation" o
+    JOIN "Citation" c ON c.id = o."citationId" GROUP BY c."frameworkId"`;
+  const controls = new Map(mapped.map((m) => [m.frameworkId, Number(m.n)]));
+  const pending = await pendingImports();
+  return shaped.map((d) => ({ ...d, clientControls: controls.get(d.id) ?? 0, pendingImport: pending.get(d.id) ?? null, latestCheck: checks.get(d.id) ?? null, comparison: cmp.has(d.id) ? comparisonSummary(cmp.get(d.id)!) : null }));
+}
+
+const CHECK_SELECT = { id: true, frameworkId: true, method: true, sourceUrl: true, status: true, approvedVersion: true, latestVersion: true, publicationDate: true, latestDocumentUrl: true, evidence: true, message: true, checkedBy: true, checkedAt: true } as const;
+
+/** Most recent "Check for Updates" result per document. */
+async function latestChecks(ids: string[]) {
+  const rows = await prisma.updateCheck.findMany({ where: { frameworkId: { in: ids } }, orderBy: { checkedAt: "desc" }, select: CHECK_SELECT });
+  const m = new Map<string, Omit<(typeof rows)[number], "checkedAt"> & { checkedAt: string }>();
+  for (const r of rows) if (!m.has(r.frameworkId)) m.set(r.frameworkId, { ...r, checkedAt: r.checkedAt.toISOString() });
+  return m;
 }
 
 export async function getSource(id: string) {
   const [docs, all] = await Promise.all([load({ id }), prisma.framework.findMany({ select: { id: true, name: true, family: true, versionLabel: true } })]);
   if (!docs[0]) return null;
   const base = shape(docs[0], all);
+  const comparison = base.previousVersion ? (await comparisons([{ id, previousId: base.previousVersion.id }])).get(id)! : null;
 
   // Supplied legacy -> latest transitions into this document, by status (real data only).
   const transitions = await prisma.$queryRaw<{ status: string; n: bigint }[]>`
@@ -92,10 +158,20 @@ export async function getSource(id: string) {
     GROUP BY r.status`;
   // Client controls mapped to this document (client layer, if uploaded).
   const clientControls = await prisma.ccfControl.count({ where: { obligations: { some: { citation: { frameworkId: id } } } } });
+  // Latest reviewed AI import that produced or updated this document (summary is AI output, reviewed before publishing).
+  const aiImport = await prisma.aiIngestion.findFirst({
+    where: { publishedFrameworkId: id, status: "PUBLISHED" }, orderBy: { updatedAt: "desc" },
+    select: { id: true, summary: true, model: true, reviewedBy: true, updatedAt: true, fileName: true },
+  });
   return {
     ...base,
+    aiImport: aiImport ? { ...aiImport, updatedAt: aiImport.updatedAt.toISOString() } : null,
     transitions: Object.fromEntries(transitions.map((t) => [t.status, Number(t.n)])),
     clientControls,
+    pendingImport: (await pendingImports(id)).get(id) ?? null,
+    comparison,
+    latestCheck: (await latestChecks([id])).get(id) ?? null,
+    checkHistory: (await prisma.updateCheck.findMany({ where: { frameworkId: id }, orderBy: { checkedAt: "desc" }, take: 15, select: CHECK_SELECT })).map((r) => ({ ...r, checkedAt: r.checkedAt.toISOString() })),
   };
 }
 

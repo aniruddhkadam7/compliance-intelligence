@@ -1,12 +1,6 @@
-import { Suspense } from "react";
-import { VersionImpact } from "./version-impact";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Version Impact" };
-
+/** Renamed to Change Analytics; old links keep working. */
 export default function VersionImpactPage() {
-  return (
-    <Suspense>
-      <VersionImpact />
-    </Suspense>
-  );
+  redirect("/change-analytics");
 }

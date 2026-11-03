@@ -56,7 +56,7 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
         <Card className="xl:col-span-2">
           <CardHeader
             title="Relationship graph"
-            description={c.trace.length <= 4 ? "Select a node to open it. Up to three obligations are shown per framework; select “+N more” to expand the rest." : "Select a node to open it. Obligations are summarised per framework; select a summary to expand it."}
+            description={trace.nodes.some((n) => n.kind === "more") ? "Select a node to open it. Obligations are collapsed to keep the graph readable; select a “more” card to expand a framework." : "Select a node to open it. Every mapped obligation is shown."}
           />
           <CardBody className="space-y-3">
             {trace.nodes.length > 1 ? (

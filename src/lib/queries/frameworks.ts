@@ -43,7 +43,17 @@ export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
     orderBy: { name: "asc" },
   });
 
-  return rows.map((r) => {
+  // Version lifecycle across the whole library (not only the filtered rows): newest version of a family is current.
+  const all = await prisma.framework.findMany({ select: { id: true, family: true, versionLabel: true } });
+  const newest = new Map<string, { id: string; version: string | null }>();
+  for (const f of all) {
+    if (!f.family) continue;
+    const cur = newest.get(f.family);
+    if (!cur || cmpVersion(f.versionLabel, cur.version) > 0) newest.set(f.family, { id: f.id, version: f.versionLabel });
+  }
+
+  const loaded = rows.map((r) => {
+    const latest = r.family ? newest.get(r.family) : null;
     const reported = r.connectors
       // "Not modified" checks carry no details, so use the latest check that reported a date.
       .map((c) => ({ by: c.name, date: c.checks.map((k) => sourceDate(k.details)).find(Boolean) ?? null }))
@@ -65,8 +75,36 @@ export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
     citations: r._count.citations,
     sourceUpdatedAt: reported?.date ?? null,
     sourceUpdatedBy: reported?.by ?? null,
+    loadedAt: r.updatedAt,
+    versionStatus: (!latest || latest.id === r.id ? "CURRENT" : "PREVIOUS") as VersionStatus,
+    supersededBy: latest && latest.id !== r.id ? { id: latest.id, version: latest.version } : null,
+    note: null as string | null,
     };
   });
+
+  // Earlier versions recorded from the publisher but not loaded (e.g. ISO/IEC 27002:2013): listed for reference,
+  // without obligations. Shown only for the current version, and when that version is not itself in the library.
+  const versionsHeld = new Set(all.map((f) => `${f.family}|${f.versionLabel}`));
+  const recorded = rows.flatMap((r) => {
+    const base = loaded.find((x) => x.id === r.id)!;
+    if (base.versionStatus !== "CURRENT" || !r.previousVersion || versionsHeld.has(`${r.family}|${r.previousVersion}`)) return [];
+    return [{
+      ...base, id: `recorded:${r.id}`, sourceId: "", name: `${shortName(r.name)}: version ${r.previousVersion}`, versionLabel: r.previousVersion,
+      citations: 0, sourceUpdatedAt: null, sourceUpdatedBy: null, documentUrl: r.previousVersionSource ?? r.documentUrl,
+      versionStatus: "RECORDED" as VersionStatus, supersededBy: { id: r.id, version: r.versionLabel }, note: r.previousVersionNote,
+    }];
+  });
+  return [...loaded, ...recorded];
+}
+
+/** CURRENT: newest version in the library. PREVIOUS: an older loaded version. RECORDED: earlier version known from the publisher, not loaded. */
+export type VersionStatus = "CURRENT" | "PREVIOUS" | "RECORDED";
+
+const versionKey = (v: string | null) => (v ?? "").split(/[^\d]+/).filter(Boolean).map(Number);
+function cmpVersion(a: string | null, b: string | null) {
+  const x = versionKey(a), y = versionKey(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
+  return 0;
 }
 
 export async function frameworkFacets() {

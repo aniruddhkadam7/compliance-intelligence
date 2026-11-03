@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Library, Quote, Network, ShieldCheck, GitCompareArrows, DatabaseZap, BookOpenText, type LucideIcon,
+  LayoutDashboard, Library, Network, ShieldCheck, GitCompareArrows, DatabaseZap, BookOpenText, Settings2, type LucideIcon,
 } from "lucide-react";
 import { TERMS } from "@/lib/terms";
 
@@ -8,6 +8,8 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   badgeKey?: "updates";
+  /** Shown only to admins. */
+  adminOnly?: boolean;
 }
 
 // Updates & Monitoring (/updates) is reached from Sources and the notification bell.
@@ -16,9 +18,8 @@ export const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Global repository",
     items: [
-      { href: "/frameworks", label: TERMS.frameworks, icon: Library },
       { href: "/sources", label: TERMS.sources, icon: BookOpenText, badgeKey: "updates" },
-      { href: "/citations", label: TERMS.obligations, icon: Quote },
+      { href: "/frameworks", label: TERMS.frameworks, icon: Library },
       { href: "/mappings", label: TERMS.frameworkMapping, icon: Network },
     ],
   },
@@ -26,8 +27,14 @@ export const NAV: { section: string; items: NavItem[] }[] = [
     section: "Client",
     items: [
       { href: "/controls", label: TERMS.clientControls, icon: ShieldCheck },
-      { href: "/version-impact", label: TERMS.versionImpact, icon: GitCompareArrows },
+      { href: "/change-analytics", label: TERMS.versionImpact, icon: GitCompareArrows },
     ],
   },
-  { section: "Operations", items: [{ href: "/data", label: TERMS.data, icon: DatabaseZap }] },
+  {
+    section: "Operations",
+    items: [
+      { href: "/data", label: TERMS.data, icon: DatabaseZap },
+      { href: "/admin", label: "Admin console", icon: Settings2, adminOnly: true },
+    ],
+  },
 ];

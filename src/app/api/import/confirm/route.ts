@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handle, HttpError, requireWriter } from "@/lib/auth/server";
 import { prisma } from "@/lib/db";
+import { ensureConnectors } from "@/lib/connectors/registry";
 import { confirmImport, IMPORT_KINDS, sha256, type ImportKind } from "@/lib/ingest/persist";
 import { readUploadedWorkbook } from "@/lib/ingest/upload";
 
@@ -24,5 +25,7 @@ export const POST = handle(async (req: Request) => {
   const out = await confirmImport(prisma, job.kind as ImportKind, file, session.sub, { previewJobId });
   if (out.status === "FAILED")
     throw new HttpError(422, "Import rejected: the workbook has blocking validation errors.", out.issues.filter((i) => i.severity === "ERROR").slice(0, 50));
+  // Monitoring connectors are linked to documents by family/version; re-link after the library changes.
+  if (job.kind === "LIBRARY") await ensureConnectors();
   return NextResponse.json({ jobId: out.jobId, status: out.status, kind: job.kind, counts: out.counts });
 });

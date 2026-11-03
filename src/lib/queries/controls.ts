@@ -2,13 +2,14 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { shortName } from "@/lib/frameworks";
+import { controlsNeedingReview } from "@/lib/updates/impact";
 import { ListParams, paging } from "./params";
 
 export const ControlFilters = ListParams.extend({
   category: z.string().max(120).optional().default(""),
   scope: z.string().max(60).optional().default(""),
   prefix: z.string().max(30).optional().default(""),
-  mapping: z.enum(["", "mapped", "unmapped", "conflict"]).optional().default(""),
+  mapping: z.enum(["", "mapped", "unmapped", "conflict", "review"]).optional().default(""),
   frameworkId: z.string().max(40).optional().default(""),
 });
 export type ControlFilters = z.infer<typeof ControlFilters>;
@@ -44,6 +45,7 @@ export async function listControls(f: ControlFilters) {
     ],
   };
   if (f.mapping === "conflict") where.id = { in: await conflictControlIds() };
+  if (f.mapping === "review") where.id = { in: [...(await controlsNeedingReview()).keys()] };
 
   const sortKey = (SORTS as readonly string[]).includes(f.sort ?? "") ? f.sort! : "controlName";
   const [rows, total] = await Promise.all([
@@ -56,7 +58,9 @@ export async function listControls(f: ControlFilters) {
     }),
     prisma.ccfControl.count({ where }),
   ]);
-  return { items: rows, total, page: f.page, pageSize: f.pageSize };
+  // Controls whose framework mapping is affected by a new version and awaits review.
+  const review = await controlsNeedingReview(rows.map((r) => r.id));
+  return { items: rows.map((r) => ({ ...r, review: review.get(r.id) ?? null })), total, page: f.page, pageSize: f.pageSize };
 }
 
 export async function controlFacets() {
@@ -82,7 +86,7 @@ export async function getControl(idOrName: string) {
         include: { citation: { select: { id: true, sourceSectionId: true, sectionName: true, framework: { select: { id: true, name: true, sourceId: true } } } } },
       },
       testProcedures: {
-        include: { obligations: { include: { citation: { select: { id: true, sourceSectionId: true, sectionName: true } } } } },
+        include: { obligations: { include: { citation: { select: { id: true, sourceSectionId: true, sectionName: true, frameworkId: true } } } } },
         orderBy: [{ procedureId: "asc" }, { kind: "asc" }],
       },
       evidence: true,
@@ -107,6 +111,7 @@ export async function getControl(idOrName: string) {
   const trace = [...frameworks.values()].sort((a, b) => b.citations.length - a.citations.length);
   trace.forEach((f) => f.citations.sort((a, b) => a.sourceSectionId.localeCompare(b.sourceSectionId, undefined, { numeric: true })));
 
+  const review = (await controlsNeedingReview([c.id])).get(c.id) ?? null;
   const { mappings: _m, obligations: _o, ...rest } = c;
   void _m;
   void _o;
@@ -114,6 +119,7 @@ export async function getControl(idOrName: string) {
     ...rest,
     testProcedures: c.testProcedures.map((t) => ({ ...t, obligations: t.obligations.map((l) => l.citation) })),
     conflict,
+    review,
     trace,
     citationTotal: c.obligations.length,
   };

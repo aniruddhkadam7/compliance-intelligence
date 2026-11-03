@@ -9,16 +9,16 @@ import { DataQuality } from "./quality";
 import { ResetData } from "./reset";
 
 export function DataCentre() {
-  const [s, set] = useUrlState({ tab: "import", code: "", severity: "" });
+  const [s, set] = useUrlState({ tab: "import", code: "", severity: "", draft: "" });
   return (
     <Page>
       <PageHeader
         title="Data & Imports"
-        description="Ingest workbooks, review validation results, and trace every change through the import history and audit log. A workbook import replaces reference data. Connector history and review decisions are preserved."
+        description="Upload a client control workbook, review its validation and preview, and track import history. New versions of frameworks are uploaded from Sources (Upload New Version)."
       />
-      <Tabs value={s.tab} onValueChange={(v) => set({ tab: v, code: "", severity: "" })}>
+      <Tabs value={s.tab} onValueChange={(v) => set({ tab: v, code: "", severity: "", draft: "" })}>
         <TabsList className="mb-4">
-          <TabsTrigger value="import"><Upload /> Import workbook</TabsTrigger>
+          <TabsTrigger value="import"><Upload /> Client controls upload</TabsTrigger>
           <TabsTrigger value="quality"><FileWarning /> Data quality</TabsTrigger>
           <TabsTrigger value="history"><History /> Import history</TabsTrigger>
           <TabsTrigger value="audit"><ScrollText /> Audit log</TabsTrigger>

@@ -36,6 +36,7 @@ export async function resetData(db: PrismaClient, scopes: ResetScope[], actor: s
         counts.requirements = (await tx.integratedRequirement.deleteMany()).count;
         // Connectors keep running; their framework link is cleared (onDelete: SetNull).
         counts.frameworks = (await tx.framework.deleteMany()).count;
+        counts.aiImports = (await tx.aiIngestion.deleteMany()).count;
       }
       if (scopes.includes("transitions")) counts.transitions = (await tx.versionTransition.deleteMany()).count;
       if (scopes.includes("connectors")) {

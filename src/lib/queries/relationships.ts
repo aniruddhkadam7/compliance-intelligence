@@ -147,10 +147,12 @@ export async function reviewProposal(id: string, decision: "APPROVED" | "REJECTE
           create: { controlId: p.controlId, citationId: p.citationId, mappingType: "APPROVED_UPDATE" },
           update: {},
         });
-      else await tx.controlObligation.deleteMany({ where: { controlId: p.controlId, citationId: p.citationId } });
+      else if (p.action === "REMOVE") await tx.controlObligation.deleteMany({ where: { controlId: p.controlId, citationId: p.citationId } });
+      // FLAG_REMOVED is an acknowledgement: the mapping to the previous version is kept as history.
     }
     const updated = await tx.mappingProposal.update({ where: { id }, data: { status: decision, reviewedBy: actor, reviewedAt: new Date(), reviewNote: note ?? null } });
     await tx.auditLog.create({ data: { actor, action: decision === "APPROVED" ? "MAPPING_UPDATE_APPROVED" : "MAPPING_UPDATE_REJECTED", entity: "MappingProposal", entityId: id, details: { action: p.action, controlId: p.controlId, citationId: p.citationId } } });
     return updated;
   });
 }
+

@@ -11,6 +11,7 @@ import { CitationTable, useCitations } from "@/components/citations/citation-tab
 import { CitationDetailSheet } from "@/components/citations/citation-detail";
 import { apiGet } from "@/lib/client/api";
 import { useDebounced, useUrlState } from "@/lib/client/hooks";
+import { CITATION_DEFAULTS } from "@/lib/client/prefetch";
 import { formatNumber } from "@/lib/utils";
 import { TERMS } from "@/lib/terms";
 
@@ -27,9 +28,7 @@ const FIELDS = [
 ];
 
 export function CitationExplorer() {
-  const [s, set] = useUrlState({
-    q: "", field: "all", frameworkId: "", family: "", version: "", requirementId: "", mapped: "", sort: "", dir: "asc", page: "1", citation: "",
-  });
+  const [s, set] = useUrlState(CITATION_DEFAULTS);
   const [q, setQ] = useState(s.q);
   const dq = useDebounced(q, 300);
   useEffect(() => {
@@ -41,7 +40,7 @@ export function CitationExplorer() {
   const family = facets?.families.find((f) => f.family === s.family);
   const query = { ...s, page: Number(s.page) || 1, citation: undefined };
   const { data } = useCitations(query);
-  const active = [s.q, s.frameworkId, s.family, s.requirementId, s.mapped].some(Boolean);
+  const active = [s.q, s.frameworkId, s.family, s.mapped].some(Boolean);
 
   return (
     <Page>
@@ -73,7 +72,7 @@ export function CitationExplorer() {
             />
           )}
           {active && (
-            <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", frameworkId: "", family: "", version: "", requirementId: "", mapped: "" }); }}>
+            <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", frameworkId: "", family: "", version: "", mapped: "" }); }}>
               <X /> Clear
             </Button>
           )}
@@ -89,7 +88,7 @@ export function CitationExplorer() {
           selectedId={s.citation}
         />
       </Card>
-      <CitationDetailSheet citationId={s.citation || null} onClose={() => set({ citation: "", page: s.page })} />
+      <CitationDetailSheet citationId={s.citation || null} onClose={() => set({ citation: "", page: s.page })} onOpen={(id) => set({ citation: id, page: s.page })} />
     </Page>
   );
 }

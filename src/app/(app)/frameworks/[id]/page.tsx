@@ -78,7 +78,7 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
           {otherVersions.length > 0 && (
             <div className="border-t border-border p-3">
               <Button asChild size="sm" className="w-full">
-                <Link href={`/version-impact?from=${fw.versions[0].id}&to=${fw.versions[fw.versions.length - 1].id}`}><GitCompareArrows /> Compare versions</Link>
+                <Link href={`/change-analytics?from=${fw.versions[0].id}&to=${fw.versions[fw.versions.length - 1].id}`}><GitCompareArrows /> Compare versions</Link>
               </Button>
             </div>
           )}

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, LogOut, Menu, Moon, Sun, User } from "lucide-react";
+import { Bell, CheckCircle2, Loader2, LogOut, Menu, Moon, Sun, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator, DropdownTrigger } from "@/components/ui/dropdown";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,25 @@ import { apiGet } from "@/lib/client/api";
 import { formatRelative, truncate } from "@/lib/utils";
 import { EyLogo } from "./ey-logo";
 import { GlobalSearch } from "./global-search";
+import { dismissImportJob, useImportJobs } from "@/lib/client/import-jobs";
+
+function ImportStatus() {
+  const jobs = useImportJobs();
+  if (!jobs.length) return null;
+  return (
+    <div className="hidden items-center gap-1.5 md:flex">
+      {jobs.map((j) => (
+        <span key={j.id} className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 py-0.5 pl-2 pr-1 text-xs">
+          {j.state === "reading" ? <Loader2 className="size-3.5 animate-spin text-accent" /> : <CheckCircle2 className={j.state === "ready" ? "size-3.5 text-success" : "size-3.5 text-danger"} />}
+          <Link href={j.href} className="text-fg hover:underline">
+            {j.state === "reading" ? `Reading ${truncate(j.name, 24)} · ${Math.min(j.done + 1, j.total)}/${j.total}` : j.state === "ready" ? `${truncate(j.name, 24)} ready` : `${truncate(j.name, 24)} failed`}
+          </Link>
+          {j.state !== "reading" && <button type="button" aria-label="Dismiss" onClick={() => dismissImportJob(j.id)} className="cursor-pointer rounded p-0.5 text-muted hover:text-fg"><X className="size-3" /></button>}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 interface UpdateLite {
   id: string;
@@ -43,6 +62,7 @@ export function Topbar({ user, role, onMenu }: { user: string; role: string; onM
       <EyLogo className="h-6 w-6 text-fg lg:hidden" />
       <GlobalSearch />
       <div className="ml-auto flex items-center gap-1">
+        <ImportStatus />
         <Dropdown>
           <DropdownTrigger asChild>
             <Button variant="ghost" size="icon-sm" aria-label="Notifications" className="relative">

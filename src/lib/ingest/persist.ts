@@ -3,6 +3,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { parseWorkbook } from "./parse";
 import type { Issue, SheetSummary } from "./ccf-workbook";
 import { normaliseSourceIdWorkbook } from "./source-id-workbook";
+import { isClientTemplate, normaliseClientTemplate } from "./client-template";
 import { normaliseRelationships, type RelationshipRow } from "./relationships-workbook";
 
 /**
@@ -92,7 +93,8 @@ async function analyse(db: PrismaClient, kind: ImportKind, buffer: Buffer): Prom
   }
 
   // CLIENT_CONTROLS
-  const r = normaliseSourceIdWorkbook(wb, "controls", await sectionLookup(db));
+  // The simple client template, or the detailed control workbook layout.
+  const r = isClientTemplate(wb) ? normaliseClientTemplate(wb, await sectionLookup(db)) : normaliseSourceIdWorkbook(wb, "controls", await sectionLookup(db));
   const ds = r.dataset;
   return {
     issues: r.issues, sheets: r.sheets, counts: r.counts,

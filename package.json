@@ -15,7 +15,9 @@
     "db:seed-connectors": "tsx scripts/seed-connectors.ts",
     "postinstall": "prisma generate",
     "dev:webpack": "next dev -p 3000",
-    "demo": "next build && next start -p 3000"
+    "demo": "next build && next start -p 3000",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "monitoring:integration": "tsx scripts/monitoring-integration.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -44,6 +46,7 @@
     "recharts": "^3.10.1",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
+    "unpdf": "1.8.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.6.7"
   },

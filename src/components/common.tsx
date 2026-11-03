@@ -58,15 +58,18 @@ export interface StatItem {
   value: React.ReactNode;
   sub?: React.ReactNode;
   href?: string;
+  /** Makes the tile a button (e.g. to filter a table); `active` marks the current selection. */
+  onClick?: () => void;
+  active?: boolean;
   tone?: "default" | "warning" | "success" | "accent";
   hint?: string;
   icon?: LucideIcon;
 }
 
-function Stat({ label, value, sub, href, tone = "default", hint, icon: Icon }: StatItem) {
+function Stat({ label, value, sub, href, onClick, active, tone = "default", hint, icon: Icon }: StatItem) {
   const color = { default: "text-fg", warning: "text-warning", success: "text-success", accent: "text-accent" }[tone];
   const body = (
-    <div className="flex h-full flex-col gap-1 border-b border-r border-border px-4 py-3 transition-colors hover:bg-surface-2">
+    <div className={cn("flex h-full flex-col gap-1 border-b border-r border-border px-4 py-3 text-left transition-colors hover:bg-surface-2", active && "bg-surface-3")}>
       <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted">
         {Icon && <Icon className="size-3.5 text-subtle" />}
         <Tooltip content={hint}><span className={hint ? "cursor-help underline decoration-dotted decoration-subtle underline-offset-2" : ""}>{label}</span></Tooltip>
@@ -75,6 +78,7 @@ function Stat({ label, value, sub, href, tone = "default", hint, icon: Icon }: S
       {sub && <div className="line-clamp-2 text-[11px] leading-snug text-subtle">{sub}</div>}
     </div>
   );
+  if (onClick) return <button type="button" onClick={onClick} aria-pressed={!!active} className="-mb-px -mr-px block cursor-pointer text-left">{body}</button>;
   return href ? <Link href={href} className="-mb-px -mr-px">{body}</Link> : <div className="-mb-px -mr-px">{body}</div>;
 }
 

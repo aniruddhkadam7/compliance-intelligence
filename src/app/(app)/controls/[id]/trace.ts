@@ -4,23 +4,32 @@ import type { ControlDetail } from "@/lib/queries/controls";
 /** Action key carried by a collapsed "+N obligations" node; expanding it shows that framework's obligations. */
 export const expandAction = (frameworkId: string) => `expand:${frameworkId}`;
 
+/** Obligation cards beyond which the graph collapses each framework's obligations behind a "+N more" node. */
+const MAX_OBLIGATION_CARDS = 12;
+
 /**
- * Framework → Obligation → Control. Obligations are collapsed into one summary node per framework
- * when the trace is large; frameworks listed in `expanded` show every obligation.
+ * Framework → Obligation → Control. Every obligation is shown unless the trace would hold too many
+ * cards; only then do obligations collapse into summary nodes, and frameworks listed in `expanded`
+ * show every obligation.
  */
 export function buildTrace(c: ControlDetail, expanded: ReadonlySet<string> = new Set()) {
-  const PER_FRAMEWORK = c.trace.length <= 4 ? 3 : 0;
   const control = `k:${c.id}`;
   const nodes: TraceNode[] = [{ id: control, kind: "control", label: c.controlName, sublabel: c.title ?? undefined, emphasis: true }];
   const edges: TraceEdge[] = [];
   const seen = new Set<string>();
   const add = (n: TraceNode) => { if (!seen.has(n.id)) { seen.add(n.id); nodes.push(n); } };
 
-  for (const fw of c.trace) {
-    // One entry per obligation; secondary only when the obligation is reached solely by a secondary mapping.
-    const obligations = [...new Map(
+  // One entry per obligation; secondary only when the obligation is reached solely by a secondary mapping.
+  const byFramework = c.trace.map((fw) => ({
+    fw,
+    obligations: [...new Map(
       [...fw.citations].sort((x, y) => (x.mappingType === "SECONDARY" ? 1 : 0) - (y.mappingType === "SECONDARY" ? 1 : 0)).map((o) => [o.id, o]),
-    ).values()];
+    ).values()],
+  }));
+  const totalObligations = byFramework.reduce((n, x) => n + x.obligations.length, 0);
+  const PER_FRAMEWORK = totalObligations <= MAX_OBLIGATION_CARDS ? Number.POSITIVE_INFINITY : c.trace.length <= 4 ? 3 : 0;
+
+  for (const { fw, obligations } of byFramework) {
     add({ id: `f:${fw.id}`, kind: "framework", label: fw.short, sublabel: `${obligations.length} obligation${obligations.length === 1 ? "" : "s"}`, href: `/frameworks/${fw.id}` });
     const shown = expanded.has(fw.id) ? obligations.length : PER_FRAMEWORK;
     obligations.slice(0, shown).forEach((o) => {

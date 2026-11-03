@@ -43,14 +43,14 @@ function TraceNodeView({ data }: NodeProps<Node<FlowData>>) {
         data.kind === "more" && "border-dashed bg-surface-2",
       )}
     >
-      <Handle type="target" position={Position.Left} className="!size-1.5 !border-0 !bg-border-strong" />
+      <Handle type="source" position={Position.Left} className="!size-1.5 !border-0 !bg-border-strong" />
       <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-subtle">
         <Icon className={cn("size-3", data.kind === "control" && "text-accent", data.kind === "framework" && "text-info")} />
         {KIND_LABEL[data.kind]}
       </div>
       <div className="truncate text-[12px] font-medium text-fg" title={data.label}>{data.label}</div>
       {data.sublabel && <div className="truncate text-[10.5px] text-muted" title={data.sublabel}>{data.sublabel}</div>}
-      <Handle type="source" position={Position.Right} className="!size-1.5 !border-0 !bg-border-strong" />
+      <Handle type="target" position={Position.Right} className="!size-1.5 !border-0 !bg-border-strong" />
     </div>
   );
 }
@@ -70,7 +70,9 @@ export function TraceGraph({
     const rf: Node<FlowData>[] = [];
     cols.forEach((col, ci) => {
       const offset = ((maxRows - col.length) * ROW_H) / 2;
-      col.forEach((n, ri) => rf.push({ id: n.id, type: "trace", position: { x: COL_X[ci], y: offset + ri * ROW_H }, data: n as FlowData, draggable: true }));
+      // Right-to-left flow: the first logical column (framework) sits on the far right.
+      const x = COL_X[cols.length - 1 - ci];
+      col.forEach((n, ri) => rf.push({ id: n.id, type: "trace", position: { x, y: offset + ri * ROW_H }, data: n as FlowData, draggable: true }));
     });
     const re: Edge[] = edges.map((e, i) => ({
       id: `e${i}`, source: e.from, target: e.to, type: "smoothstep",
@@ -103,11 +105,11 @@ export function TraceGraph({
 export function GraphLegend() {
   return (
     <div className="flex flex-wrap items-center gap-4 text-[11px] text-muted">
-      {(["framework", "citation", "control"] as const).map((k, i) => {
+      {(["control", "citation", "framework"] as const).map((k, i) => {
         const Icon = ICON[k];
         return (
           <span key={k} className="flex items-center gap-1.5">
-            {i > 0 && <span className="text-subtle">→</span>}
+            {i > 0 && <span className="text-subtle">←</span>}
             <Icon className="size-3" /> {KIND_LABEL[k]}
           </span>
         );
