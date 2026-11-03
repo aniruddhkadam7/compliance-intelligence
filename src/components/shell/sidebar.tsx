@@ -45,7 +45,7 @@ export function Sidebar({ badges, role, onNavigate }: { badges: { updates: numbe
                   <item.icon className={cn("size-[18px]", active ? "text-accent" : "text-muted group-hover:text-fg-2")} />
                   <span className="truncate">{item.label}</span>
                   {count > 0 && (
-                    <span className="ml-auto rounded-[4px] bg-warning-soft px-1.5 text-[10px] font-semibold leading-4 text-warning tabular">{count}</span>
+                    <span title={`${count} update(s) ready to install`} className="ml-auto rounded-[4px] bg-warning-soft px-1.5 text-[10px] font-semibold leading-4 text-warning tabular">{count}</span>
                   )}
                 </Link>
               );

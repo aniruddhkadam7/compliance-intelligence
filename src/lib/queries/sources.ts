@@ -119,6 +119,9 @@ async function pendingImports(frameworkId?: string) {
   return pending;
 }
 
+/** Documents with a released update waiting for a user to click Update (the Sources badge). */
+export const releasedUpdateCount = async () => [...(await pendingImports()).values()].filter((p) => p.released).length;
+
 export async function listSources() {
   const docs = await load();
   const shaped = docs.map((f) => shape(f, docs));
