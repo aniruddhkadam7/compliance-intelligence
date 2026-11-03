@@ -11,8 +11,13 @@ export const ControlFilters = ListParams.extend({
   prefix: z.string().max(30).optional().default(""),
   mapping: z.enum(["", "mapped", "unmapped", "conflict", "review"]).optional().default(""),
   frameworkId: z.string().max(40).optional().default(""),
+  /** Framework family (all versions), e.g. "NIST CSF". */
+  family: z.string().max(120).optional().default(""),
 });
 export type ControlFilters = z.infer<typeof ControlFilters>;
+
+/** ControlObligation.mappingType of illustrative demonstration links (see scripts/seed-nist-demo.ts). */
+export const DEMO_MAPPING = "DEMO";
 
 const SORTS = ["controlName", "category", "scope", "title"] as const;
 
@@ -42,6 +47,7 @@ export async function listControls(f: ControlFilters) {
       f.mapping === "mapped" ? { obligations: { some: {} } } : {},
       f.mapping === "unmapped" ? { obligations: { none: {} } } : {},
       f.frameworkId ? { obligations: { some: { citation: { frameworkId: f.frameworkId } } } } : {},
+      f.family && !f.frameworkId ? { obligations: { some: { citation: { framework: { family: f.family } } } } } : {},
     ],
   };
   if (f.mapping === "conflict") where.id = { in: await conflictControlIds() };
@@ -64,12 +70,29 @@ export async function listControls(f: ControlFilters) {
 }
 
 export async function controlFacets() {
-  const [cats, scopes, prefixes] = await Promise.all([
+  const [cats, scopes, prefixes, fwRows] = await Promise.all([
     prisma.ccfControl.groupBy({ by: ["category"], _count: { _all: true } }),
     prisma.ccfControl.groupBy({ by: ["scope"], _count: { _all: true } }),
     prisma.ccfControl.groupBy({ by: ["domainPrefix"], _count: { _all: true } }),
+    // Distinct controls mapped to each framework version (any mapping type).
+    prisma.$queryRaw<{ id: string; name: string; family: string | null; controls: bigint }[]>`
+      SELECT f."id", f."name", f."family", COUNT(DISTINCT o."controlId") AS controls
+      FROM "Framework" f
+      JOIN "Citation" c ON c."frameworkId" = f."id"
+      JOIN "ControlObligation" o ON o."citationId" = c."id"
+      GROUP BY f."id", f."name", f."family"`,
   ]);
+  // Per family: distinct controls across all its versions, plus each version's own count.
+  const famIds = new Map<string, string[]>();
+  for (const r of fwRows) famIds.set(r.family ?? r.name, [...(famIds.get(r.family ?? r.name) ?? []), r.id]);
+  const famCounts = await Promise.all([...famIds.entries()].map(async ([family, ids]) => ({
+    family,
+    controls: await prisma.ccfControl.count({ where: { obligations: { some: { citation: { frameworkId: { in: ids } } } } } }),
+    versions: fwRows.filter((r) => ids.includes(r.id)).map((r) => ({ id: r.id, short: shortName(r.name), controls: Number(r.controls) }))
+      .sort((a, b) => a.short.localeCompare(b.short, undefined, { numeric: true })),
+  })));
   return {
+    frameworks: famCounts.sort((a, b) => a.family.localeCompare(b.family)),
     categories: cats.filter((c) => c.category).map((c) => ({ value: c.category!, count: c._count._all })).sort((a, b) => a.value.localeCompare(b.value)),
     scopes: scopes.filter((c) => c.scope).map((c) => ({ value: c.scope!, count: c._count._all })).sort((a, b) => b.count - a.count),
     prefixes: prefixes.map((c) => ({ value: c.domainPrefix, count: c._count._all })).sort((a, b) => a.value.localeCompare(b.value)),
@@ -86,7 +109,7 @@ export async function getControl(idOrName: string) {
         include: { citation: { select: { id: true, sourceSectionId: true, sectionName: true, framework: { select: { id: true, name: true, sourceId: true } } } } },
       },
       testProcedures: {
-        include: { obligations: { include: { citation: { select: { id: true, sourceSectionId: true, sectionName: true, frameworkId: true } } } } },
+        include: { obligations: { include: { citation: { select: { id: true, sourceSectionId: true, sectionName: true, frameworkId: true, framework: { select: { id: true, name: true, sourceId: true } } } } } } },
         orderBy: [{ procedureId: "asc" }, { kind: "asc" }],
       },
       evidence: true,
@@ -111,6 +134,40 @@ export async function getControl(idOrName: string) {
   const trace = [...frameworks.values()].sort((a, b) => b.citations.length - a.citations.length);
   trace.forEach((f) => f.citations.sort((a, b) => a.sourceSectionId.localeCompare(b.sourceSectionId, undefined, { numeric: true })));
 
+  // Per test procedure: each framework kept separate with its own obligations. Links the control marks DEMO are
+  // illustrative demonstration data awaiting validation.
+  const demo = new Set(c.obligations.filter((o) => o.mappingType === DEMO_MAPPING).map((o) => o.citation.id));
+  const group = (rows: { id: string; sourceSectionId: string; sectionName: string; frameworkId: string }[], fwById: Map<string, { id: string; name: string; sourceId: string }>) => {
+    const byFw = new Map<string, { id: string; name: string; short: string; sourceId: string; obligations: (Obl & { demo: boolean })[] }>();
+    for (const r of rows) {
+      const fw = fwById.get(r.frameworkId);
+      if (!fw) continue;
+      const e = byFw.get(fw.id) ?? { id: fw.id, name: fw.name, short: shortName(fw.name), sourceId: fw.sourceId, obligations: [] };
+      if (!e.obligations.some((x) => x.id === r.id)) e.obligations.push({ id: r.id, sourceSectionId: r.sourceSectionId, sectionName: r.sectionName, mappingType: demo.has(r.id) ? DEMO_MAPPING : "PROCEDURE", demo: demo.has(r.id) });
+      byFw.set(fw.id, e);
+    }
+    const out = [...byFw.values()];
+    out.forEach((f) => f.obligations.sort((a, b) => a.sourceSectionId.localeCompare(b.sourceSectionId, undefined, { numeric: true })));
+    return out.sort((a, b) => a.short.localeCompare(b.short, undefined, { numeric: true }));
+  };
+  const fwById = new Map([
+    ...c.obligations.map((o) => o.citation.framework),
+    ...c.testProcedures.flatMap((t) => t.obligations.map((l) => l.citation.framework)),
+  ].map((f) => [f.id, f]));
+  const frameworkIdOf = new Map(c.obligations.map((o) => [o.citation.id, o.citation.framework.id]));
+  const procedureTrace = c.testProcedures
+    .filter((t) => t.kind === "PROCEDURE")
+    .map((t) => ({
+      id: t.id, procedureId: t.procedureId, text: t.text,
+      frameworks: group(t.obligations.map((l) => ({ ...l.citation, frameworkId: l.citation.frameworkId })), fwById),
+    }));
+  // Obligations linked to the control but to no test procedure (legacy primary/secondary mappings).
+  const viaProcedure = new Set(c.testProcedures.flatMap((t) => t.obligations.map((l) => l.citation.id)));
+  const controlLevel = group(
+    c.obligations.filter((o) => !viaProcedure.has(o.citation.id)).map((o) => ({ ...o.citation, frameworkId: frameworkIdOf.get(o.citation.id)! })),
+    fwById,
+  );
+
   const review = (await controlsNeedingReview([c.id])).get(c.id) ?? null;
   const { mappings: _m, obligations: _o, ...rest } = c;
   void _m;
@@ -121,6 +178,8 @@ export async function getControl(idOrName: string) {
     conflict,
     review,
     trace,
+    procedureTrace,
+    controlLevel,
     citationTotal: c.obligations.length,
   };
 }

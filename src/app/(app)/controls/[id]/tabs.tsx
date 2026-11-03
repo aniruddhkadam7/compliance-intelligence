@@ -1,15 +1,15 @@
 "use client";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CheckCircle2, ClipboardCheck, FileCheck2, FileText, GitBranch, Link2, Search, Table2, XCircle, CircleDashed } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, FileCheck2, FileText, GitBranch, ChevronRight, Link2, Search, Table2, XCircle, CircleDashed } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { GraphLegend, TraceGraph } from "@/components/graph/trace-graph";
+import { buildTrace, COLLAPSE_AT } from "./trace";
 import { Input } from "@/components/ui/input";
 import { EmptyState, KeyValue, LongText, Provenance, SectionTitle } from "@/components/common";
-import { GraphLegend, TraceGraph } from "@/components/graph/trace-graph";
-import { Button } from "@/components/ui/button";
-import { buildTrace } from "./trace";
 import { EVIDENCE_KIND_LABELS, mappingLabel, TP_KIND_LABELS } from "@/lib/labels";
 import type { ControlDetail } from "@/lib/queries/controls";
 import { useUrlState } from "@/lib/client/hooks";
@@ -38,6 +38,7 @@ export function ControlTabs({ control: c }: { control: ControlDetail }) {
 
 function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: string }) {
   const [q, setQ] = useState(initialQuery);
+  const [view, setView] = useState<"graph" | "list">("graph");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const trace = useMemo(() => buildTrace(c, expanded), [c, expanded]);
   const onAction = (action: string) => {
@@ -47,6 +48,7 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
   const rows = useMemo(() => {
     const all = c.trace.flatMap((fw) => fw.citations.map((ct) => ({ ...ct, framework: fw })));
     const unique = [...new Map(all.sort((x, y) => (x.mappingType === "PRIMARY" ? -1 : 1) - (y.mappingType === "PRIMARY" ? -1 : 1)).map((r) => [r.id, r])).values()];
+    unique.sort((x, y) => x.framework.short.localeCompare(y.framework.short, undefined, { numeric: true }) || x.sourceSectionId.localeCompare(y.sourceSectionId, undefined, { numeric: true }));
     return unique.filter((r) => !q || `${r.sectionName} ${r.sourceSectionId} ${r.framework.short}`.toLowerCase().includes(q.toLowerCase()));
   }, [c.trace, q]);
 
@@ -55,18 +57,25 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader
-            title="Relationship graph"
-            description={trace.nodes.some((n) => n.kind === "more") ? "Select a node to open it. Obligations are collapsed to keep the graph readable; select a “more” card to expand a framework." : "Select a node to open it. Every mapped obligation is shown."}
+            title="Control → test procedure → framework → obligations"
+            description="Each framework is shown separately under its test procedure with only its own obligations. Groups of eight or more obligations are collapsed; select one to expand."
+            actions={
+              <div className="flex rounded-md border border-border p-0.5">
+                {(["graph", "list"] as const).map((k) => (
+                  <button key={k} onClick={() => setView(k)} className={`rounded-[4px] px-2 py-1 text-xs font-medium capitalize ${view === k ? "bg-surface-3 text-fg" : "text-muted"}`}>{k}</button>
+                ))}
+              </div>
+            }
           />
           <CardBody className="space-y-3">
-            {trace.nodes.length > 1 ? (
+            {view === "list" ? <ClientControl c={c} /> : trace.nodes.length > 1 ? (
               <>
                 {/* Remount on expand so the view refits to the new graph. */}
-                <TraceGraph key={[...expanded].join(",")} nodes={trace.nodes} edges={trace.edges} onAction={onAction} />
+                <TraceGraph key={[...expanded].join(",")} nodes={trace.nodes} edges={trace.edges} onAction={onAction} height={560} />
                 {expanded.size > 0 && <Button size="sm" variant="ghost" onClick={() => setExpanded(new Set())}>Collapse all</Button>}
+                <GraphLegend />
               </>
             ) : <EmptyState title="No resolvable mapping" description="This control is not mapped to any regulatory obligation." />}
-            <GraphLegend />
           </CardBody>
         </Card>
         <div className="space-y-4">
@@ -106,6 +115,77 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
         </div>
       </Card>
     </div>
+  );
+}
+
+
+type FrameworkGroup = ControlDetail["procedureTrace"][number]["frameworks"][number];
+
+function FrameworkBlock({ fw }: { fw: FrameworkGroup }) {
+  const list = (
+    <ul className="space-y-1">
+      {fw.obligations.map((o) => (
+        <li key={o.id} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+          <Link href={`/citations?citation=${o.sourceSectionId}`} className="shrink-0 font-mono text-accent hover:underline">{o.sourceSectionId}</Link>
+          <span className="text-fg-2">{o.sectionName.split(" - ").slice(-1)[0]}</span>
+          {o.demo && <Badge tone="outline">Illustrative · pending validation</Badge>}
+        </li>
+      ))}
+    </ul>
+  );
+  const n = fw.obligations.length;
+  return (
+    <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <Link href={`/frameworks/${fw.id}`} className="text-[13px] font-semibold text-fg hover:text-accent">{fw.short}</Link>
+        <span className="text-[11px] text-muted">{n} obligation{n === 1 ? "" : "s"}</span>
+      </div>
+      {n < COLLAPSE_AT ? list : (
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent">
+            <ChevronRight className="size-3.5 transition-transform group-open:rotate-90" /> Click to expand {n} obligations
+          </summary>
+          <div className="mt-2 max-h-72 overflow-auto">{list}</div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+function ClientControl({ c }: { c: ControlDetail }) {
+  const hasDemo = [...c.procedureTrace.flatMap((t) => t.frameworks), ...c.controlLevel].some((f) => f.obligations.some((o) => o.demo));
+  if (!c.procedureTrace.length && !c.controlLevel.length)
+    return <EmptyState title="No resolvable mapping" description="This control is not mapped to any regulatory obligation." />;
+  return (
+    <>
+      <div className="rounded-md border border-border-strong bg-surface px-3 py-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Client control</div>
+        <div className="text-sm font-semibold text-fg"><span className="font-mono">{c.controlName}</span>{c.title ? ` — ${c.title}` : ""}</div>
+      </div>
+      <div className="space-y-3 border-l-2 border-border pl-4">
+        {c.procedureTrace.map((t) => (
+          <section key={t.id} className="space-y-2">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Test procedure</div>
+              <div className="font-mono text-[13px] font-semibold text-fg">{t.procedureId ?? "Unnumbered"}</div>
+            </div>
+            {t.frameworks.length === 0 && <p className="text-xs text-warning">No obligation mapped to this test procedure.</p>}
+            <div className="space-y-2 border-l-2 border-border pl-4">
+              {t.frameworks.map((fw) => <FrameworkBlock key={fw.id} fw={fw} />)}
+            </div>
+          </section>
+        ))}
+        {c.controlLevel.length > 0 && (
+          <section className="space-y-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Control-level mapping (no test procedure)</div>
+            <div className="space-y-2 border-l-2 border-border pl-4">
+              {c.controlLevel.map((fw) => <FrameworkBlock key={fw.id} fw={fw} />)}
+            </div>
+          </section>
+        )}
+      </div>
+      {hasDemo && <p className="text-[11px] text-muted">Obligations marked “Illustrative” are demonstration links, not recorded client mappings, and need validation.</p>}
+    </>
   );
 }
 

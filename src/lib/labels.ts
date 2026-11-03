@@ -31,7 +31,7 @@ export const ISSUE_LABELS: Record<string, string> = {
 };
 
 /** How a control is linked to an obligation. */
-export const mappingLabel = (type: string) => ({ PROCEDURE: "test procedure", PRIMARY: "primary", SECONDARY: "secondary" })[type] ?? type.toLowerCase();
+export const mappingLabel = (type: string) => ({ PROCEDURE: "test procedure", PRIMARY: "primary", SECONDARY: "secondary", DEMO: "illustrative" })[type] ?? type.toLowerCase();
 
 export const TP_KIND_LABELS: Record<string, string> = {
   PROCEDURE: "Test procedure",

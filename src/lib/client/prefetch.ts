@@ -8,7 +8,7 @@ import { apiGet, qs } from "./api";
 export const CITATION_DEFAULTS = {
   q: "", field: "all", frameworkId: "", family: "", version: "", mapped: "", sort: "", dir: "asc", page: "1", citation: "",
 };
-export const CONTROL_DEFAULTS = { q: "", category: "", scope: "", prefix: "", mapping: "", sort: "controlName", dir: "asc", page: "1" };
+export const CONTROL_DEFAULTS = { q: "", category: "", scope: "", prefix: "", mapping: "", family: "", frameworkId: "", sort: "controlName", dir: "asc", page: "1" };
 
 type Warm = { key: unknown[]; url: string };
 
