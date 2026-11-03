@@ -1,9 +1,18 @@
-// Minimal OpenAI Responses API client with strict JSON-schema output. Server-only: the API key is read
-// from the environment (OPENAI_API_KEY) and never sent to the browser. Import from server code only.
+// Minimal Responses API client with strict JSON-schema output. Server-only: the API key is read from the
+// environment and never sent to the browser. Import from server code only.
+//
+// Provider: OpenRouter when OPENROUTER_API_KEY is set (same request format, models named "provider/model"),
+// otherwise OpenAI directly with OPENAI_API_KEY. AI_MODEL (or OPENAI_MODEL) chooses the model.
+const openRouter = () => !!process.env.OPENROUTER_API_KEY;
+export const aiKey = () => process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY || "";
+export const aiBaseUrl = () => (openRouter() ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1");
+/** OpenRouter names models "provider/model"; a bare OpenAI name is given the "openai/" prefix there. */
+export const aiModelName = (name: string) => (openRouter() && !name.includes("/") ? `openai/${name}` : name);
+export const AI_MODEL = () => aiModelName(process.env.AI_MODEL || process.env.OPENAI_MODEL || "gpt-6-luna");
+export const aiConfigured = () => !!aiKey();
+export const AI_NOT_CONFIGURED = "AI is not configured: set OPENROUTER_API_KEY (or OPENAI_API_KEY).";
 
-const ENDPOINT = "https://api.openai.com/v1/responses";
-export const AI_MODEL = () => process.env.OPENAI_MODEL || "gpt-6-luna";
-export const aiConfigured = () => !!process.env.OPENAI_API_KEY;
+const ENDPOINT = () => `${aiBaseUrl()}/responses`;
 
 export interface Usage { input: number; output: number; calls: number }
 export const addUsage = (a: Usage | null | undefined, b: Usage): Usage => ({ input: (a?.input ?? 0) + b.input, output: (a?.output ?? 0) + b.output, calls: (a?.calls ?? 0) + b.calls });
@@ -12,12 +21,12 @@ export class AiError extends Error {}
 
 /** One structured call: returns the parsed object that matches `schema`, plus token usage. */
 export async function structured<T>(opts: { name: string; schema: Record<string, unknown>; instructions: string; input: string; timeoutMs?: number; file?: { name: string; data: string; mime: string } }): Promise<{ data: T; usage: Usage }> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new AiError("AI is not configured: OPENAI_API_KEY is not set.");
+  const key = aiKey();
+  if (!key) throw new AiError(AI_NOT_CONFIGURED);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 240_000);
   try {
-    const res = await fetch(ENDPOINT, {
+    const res = await fetch(ENDPOINT(), {
       method: "POST",
       signal: ctrl.signal,
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },

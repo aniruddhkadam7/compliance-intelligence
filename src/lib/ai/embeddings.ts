@@ -1,12 +1,14 @@
 // Text embeddings for semantic similarity between requirement texts (server-only; key from the environment).
-const MODEL = () => process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
+import { AI_NOT_CONFIGURED, aiBaseUrl, aiKey, aiModelName } from "./openai";
+
+const MODEL = () => aiModelName(process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small");
 
 export async function embed(texts: string[]): Promise<number[][]> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error("AI is not configured: OPENAI_API_KEY is not set.");
+  const key = aiKey();
+  if (!key) throw new Error(AI_NOT_CONFIGURED);
   const out: number[][] = [];
   for (let i = 0; i < texts.length; i += 256) {
-    const res = await fetch("https://api.openai.com/v1/embeddings", {
+    const res = await fetch(`${aiBaseUrl()}/embeddings`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: MODEL(), input: texts.slice(i, i + 256).map((t) => t.slice(0, 6000) || " ") }),

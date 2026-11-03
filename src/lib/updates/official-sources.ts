@@ -4,6 +4,7 @@
 //    cited official page itself and accepts the version only if it appears on that page. The model's own
 //    knowledge never counts: no fetched page, no verified result.
 import { ConnectorError, fetchWithTimeout, sha256 } from "@/lib/connectors/http";
+import { AI_MODEL, aiBaseUrl, aiKey } from "@/lib/ai/openai";
 
 // --- ISO open data ------------------------------------------------------------------------------------------
 
@@ -104,14 +105,14 @@ export function htmlToText(html: string) {
 interface SearchAnswer { found: boolean; latestVersion: string; versionTextOnPage: string; publicationDate: string; dateTextOnPage: string; sourceUrl: string; isTheFrameworkItself: boolean; note: string }
 
 export async function officialSearch(name: string, approved: string | null, domains: string[]) {
-  const key = process.env.OPENAI_API_KEY;
+  const key = aiKey();
   if (!key) return { verified: false as const, reason: "AI is not configured, so official sources could not be searched.", evidence: {} };
   if (!domains.length) return { verified: false as const, reason: "No official publisher domain is known for this document.", evidence: {} };
-  const res = await fetch("https://api.openai.com/v1/responses", {
+  const res = await fetch(`${aiBaseUrl()}/responses`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-6-luna",
+      model: AI_MODEL(),
       store: false,
       tools: [{ type: "web_search", filters: { allowed_domains: domains } }],
       instructions:

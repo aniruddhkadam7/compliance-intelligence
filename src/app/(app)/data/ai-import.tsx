@@ -84,7 +84,7 @@ export function AiImport({ draftId, onOpen }: { draftId: string; onOpen: (id: st
       </Card>
 
       {!cfg.configured ? (
-        <Card><EmptyState icon={Bot} title="AI is not configured" description="Set OPENAI_API_KEY (and optionally OPENAI_MODEL) on the server to enable AI-assisted import." /></Card>
+        <Card><EmptyState icon={Bot} title="AI is not configured" description="Set OPENROUTER_API_KEY (and optionally AI_MODEL, e.g. openai/gpt-6-luna) on the server to enable AI-assisted import." /></Card>
       ) : draftId ? (
         <DraftView id={draftId} onBack={() => onOpen("")} />
       ) : (
