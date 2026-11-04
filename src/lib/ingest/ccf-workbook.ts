@@ -23,6 +23,7 @@ export type SheetRole =
   | "REQUIREMENTS"
   | "CONTROLS"
   | "CONTROLS_WORKING"
+  | "CONTROLS_SELECTION"
   | "METRICS"
   | "IR_ID_LIST"
   | "UNMAPPED_REVIEW"

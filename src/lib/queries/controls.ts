@@ -15,6 +15,8 @@ export const ControlFilters = ListParams.extend({
   frameworkId: z.string().max(40).optional().default(""),
   /** Framework family (all versions), e.g. "NIST CSF". */
   family: z.string().max(120).optional().default(""),
+  /** Client scope: in scope, out of scope, or the workbook's client selection ("CCFv2"). */
+  inScope: z.enum(["", "in", "out", "selection"]).optional().default(""),
 });
 export type ControlFilters = z.infer<typeof ControlFilters>;
 
@@ -27,7 +29,7 @@ async function controlFrameworkUpdates(controlIds?: string[]) {
   const out = new Map<string, FrameworkUpdate[]>();
   if (!updates.size) return { updates, byControl: out };
   const links = await prisma.controlObligation.findMany({
-    where: { citation: { frameworkId: { in: [...updates.keys()] } }, ...(controlIds && { controlId: { in: controlIds } }) },
+    where: { citation: { frameworkId: { in: [...updates.keys()] } }, control: { inScope: true }, ...(controlIds && { controlId: { in: controlIds } }) },
     distinct: ["controlId", "citationId"], select: { controlId: true, citation: { select: { frameworkId: true } } },
   });
   for (const l of links) {
@@ -54,6 +56,9 @@ export async function listControls(f: ControlFilters) {
     ...(f.category && { category: f.category }),
     ...(f.scope && { scope: f.scope }),
     ...(f.prefix && { domainPrefix: f.prefix }),
+    ...(f.inScope === "in" && { inScope: true }),
+    ...(f.inScope === "out" && { inScope: false }),
+    ...(f.inScope === "selection" && { inClientSelection: true }),
     ...(f.q && {
       OR: [
         { controlName: { contains: f.q, mode: "insensitive" } },
@@ -79,6 +84,7 @@ export async function listControls(f: ControlFilters) {
       where, ...paging(f), orderBy: { [sortKey]: f.dir },
       select: {
         id: true, controlName: true, title: true, category: true, subCategory: true, scope: true, technicalType: true, productTeamFacing: true,
+        inScope: true, inClientSelection: true,
         _count: { select: { testProcedures: true, evidence: true, frameworkReferences: true, obligations: true } },
       },
     }),
@@ -87,6 +93,30 @@ export async function listControls(f: ControlFilters) {
   // Controls whose framework mapping is affected by a new version and awaits review.
   const [review, { byControl }] = await Promise.all([controlsNeedingReview(rows.map((r) => r.id)), controlFrameworkUpdates(rows.map((r) => r.id))]);
   return { items: rows.map((r) => ({ ...r, review: review.get(r.id) ?? null, frameworkUpdates: byControl.get(r.id) ?? [] })), total, page: f.page, pageSize: f.pageSize };
+}
+
+/** The client's scope: how many controls are in it, and how many the workbook lists as the client's selection. */
+export async function controlScope() {
+  const [total, inScope, selection, selectionInScope] = await Promise.all([
+    prisma.ccfControl.count(),
+    prisma.ccfControl.count({ where: { inScope: true } }),
+    prisma.ccfControl.count({ where: { inClientSelection: true } }),
+    prisma.ccfControl.count({ where: { inClientSelection: true, inScope: true } }),
+  ]);
+  return { total, inScope, selection, selectionInScope };
+}
+
+/** Sets the client's scope: listed controls, every control, or only the workbook's client selection. */
+export async function setControlScope(change: { ids: string[]; inScope: boolean } | { preset: "all" | "selection" }) {
+  if ("preset" in change) {
+    if (change.preset === "all") return (await prisma.ccfControl.updateMany({ data: { inScope: true } })).count;
+    const [a, b] = await prisma.$transaction([
+      prisma.ccfControl.updateMany({ where: { inClientSelection: true }, data: { inScope: true } }),
+      prisma.ccfControl.updateMany({ where: { inClientSelection: false }, data: { inScope: false } }),
+    ]);
+    return a.count + b.count;
+  }
+  return (await prisma.ccfControl.updateMany({ where: { id: { in: change.ids } }, data: { inScope: change.inScope } })).count;
 }
 
 export async function controlFacets() {
@@ -116,7 +146,8 @@ export async function controlFacets() {
     categories: cats.filter((c) => c.category).map((c) => ({ value: c.category!, count: c._count._all })).sort((a, b) => a.value.localeCompare(b.value)),
     scopes: scopes.filter((c) => c.scope).map((c) => ({ value: c.scope!, count: c._count._all })).sort((a, b) => b.count - a.count),
     prefixes: prefixes.map((c) => ({ value: c.domainPrefix, count: c._count._all })).sort((a, b) => a.value.localeCompare(b.value)),
-    // Mapped documents with a newer version, and how many controls each affects.
+    scope: await controlScope(),
+    // Mapped documents with a newer version, and how many in-scope controls each affects.
     updates: await (async () => {
       const { updates, byControl } = await controlFrameworkUpdates();
       return [...updates.values()]

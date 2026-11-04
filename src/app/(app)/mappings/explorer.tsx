@@ -13,7 +13,6 @@ import { useUrlState } from "@/lib/client/hooks";
 import type { FrameworkConnection } from "@/lib/queries/framework-matrix";
 import { TERMS } from "@/lib/terms";
 import { cn, formatNumber } from "@/lib/utils";
-import { ConnectionDiagram } from "./connection-diagram";
 import { RelationshipGraph } from "./relationship-graph";
 
 interface Doc { id: string; short: string; type: string | null; sourceId?: string; versionStatus?: string }
@@ -25,10 +24,8 @@ const BASIS = {
   supplied: { label: "Supplied relationship files", hint: "Requirement-to-requirement relationships stated in imported relationship files, such as a publisher's own crosswalk. Nothing is inferred." },
   controls: { label: "Internal control mapping", hint: "Not in use yet. Framework relationships currently come from supplied relationship files only." },
 } as const;
-const LEVELS = { domain: "Domain", segment: "Segment" } as const;
 const VIEWS = { overview: "Overview", graph: "Relationship graph" } as const;
 type Basis = keyof typeof BASIS;
-type Level = keyof typeof LEVELS;
 type View = keyof typeof VIEWS;
 
 function heat(n: number, max: number): React.CSSProperties {
@@ -53,9 +50,8 @@ function Segmented<T extends string>({ value, options, onChange, label }: { valu
  * from client control traceability (control → test procedures → obligations), which lives on the control pages.
  */
 export function MappingExplorer() {
-  const [s, set] = useUrlState({ a: "", b: "", basis: "supplied", level: "domain", view: "overview" });
+  const [s, set] = useUrlState({ a: "", b: "", basis: "supplied", view: "overview" });
   const basis = (s.basis in BASIS ? s.basis : "supplied") as Basis;
-  const level = (s.level in LEVELS ? s.level : "domain") as Level;
   const view = (s.view in VIEWS ? s.view : "overview") as View;
   const supplied = basis === "supplied";
 
@@ -95,7 +91,6 @@ export function MappingExplorer() {
         {supplied && <>
           <span className="mx-1 h-6 w-px bg-border" aria-hidden />
           <Segmented label="View" value={view} onChange={(v) => set({ view: v })} options={VIEWS} />
-          {view === "overview" && <Segmented label="Level" value={level} onChange={(v) => set({ level: v })} options={LEVELS} />}
         </>}
       </Card>
 
@@ -158,7 +153,7 @@ export function MappingExplorer() {
           )}
 
           {s.a && s.b && s.a !== s.b ? (
-            <Connection data={conn.data} loading={conn.isLoading} error={conn.error} retry={conn.refetch} level={level} view={view} />
+            <Connection data={conn.data} loading={conn.isLoading} error={conn.error} retry={conn.refetch} view={view} />
           ) : (
             <Card>
               <EmptyState
@@ -174,7 +169,7 @@ export function MappingExplorer() {
   );
 }
 
-function Connection({ data, loading, error, retry, level, view }: { data?: FrameworkConnection; loading: boolean; error: unknown; retry: () => void; level: Level; view: View }) {
+function Connection({ data, loading, error, retry, view }: { data?: FrameworkConnection; loading: boolean; error: unknown; retry: () => void; view: View }) {
   if (loading) return <Skeleton className="h-[360px]" />;
   if (error) return <Card><ErrorState error={error} onRetry={retry} /></Card>;
   if (!data || !data.a || !data.b) return null;
@@ -191,8 +186,6 @@ function Connection({ data, loading, error, retry, level, view }: { data?: Frame
       </div>
     );
 
-  const A = { title: data.a.short, color: COLOR.a }, B = { title: data.b.short, color: COLOR.b };
-  const diagram = level === "segment" ? data.segment : data.domain;
   const types = [...new Set(data.sections.flatMap((p) => p.types))];
 
   return (
@@ -206,17 +199,10 @@ function Connection({ data, loading, error, retry, level, view }: { data?: Frame
           { label: "Relationship type", value: types.length === 1 ? types[0] : types.length, sub: types.length > 1 ? types.join(", ") : "As stated in the relationship file" },
         ]}
       />
-      {view === "graph" ? (
+      {view === "graph" && (
         <Card>
           <CardHeader title="Relationship graph" description={`How ${data.a.short} and ${data.b.short} are interconnected: each line is a stated relationship between two requirements.`} icon={<Share2 />} />
           <div className="p-4"><RelationshipGraph data={data} colors={COLOR} /></div>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader title={`${LEVELS[level]} view`} description={`${LEVELS[level]}s of ${data.a.short} (left) and ${data.b.short} (right). Hover a node to trace its connections.`} icon={<Workflow />} />
-          <div className="overflow-x-auto p-4">
-            <ConnectionDiagram unit="requirement pairs" columns={[{ ...A, nodes: diagram.left }, { ...B, nodes: diagram.right }]} edgeSets={[diagram.edges]} />
-          </div>
         </Card>
       )}
 

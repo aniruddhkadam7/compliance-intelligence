@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@/components/shell/nav-progress";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
-import { ArrowRight, BellRing, FileSpreadsheet, GitCompareArrows, History, Search, X } from "lucide-react";
+import { ArrowRight, BellRing, Check, FileSpreadsheet, GitCompareArrows, History, Loader2, Search, X } from "lucide-react";
 import { EmptyState, Mono, Page, PageHeader } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,10 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { DataTable } from "@/components/data-table";
-import { apiGet, qs } from "@/lib/client/api";
+import { apiGet, apiSend, qs } from "@/lib/client/api";
+import { useMe } from "@/lib/client/use-me";
 import { useDebounced, useUrlState } from "@/lib/client/hooks";
 import { CONTROL_DEFAULTS } from "@/lib/client/prefetch";
-import { formatDateTime, formatNumber } from "@/lib/utils";
+import { cn, formatDateTime, formatNumber } from "@/lib/utils";
 import { TERMS } from "@/lib/terms";
 import { ClientControlActions } from "@/components/client-control-actions";
 
@@ -35,6 +37,7 @@ interface ControlRow {
   technicalType: string | null; productTeamFacing: string | null;
   review: { updateId: string; label: string; count: number } | null;
   frameworkUpdates: FrameworkUpdate[];
+  inScope: boolean; inClientSelection: boolean;
   _count: { testProcedures: number; evidence: number; frameworkReferences: number; obligations: number };
 }
 
@@ -68,12 +71,46 @@ export function ControlRegister() {
       frameworks: { family: string; controls: number; versions: { id: string; short: string; controls: number }[] }[];
       categories: { value: string; count: number }[]; scopes: { value: string; count: number }[]; prefixes: { value: string; count: number }[];
       updates: (FrameworkUpdate & { controls: number })[];
+      scope: { total: number; inScope: number; selection: number; selectionInScope: number };
     }>("/api/controls?view=facets"),
   });
+
+  // Client scope: which controls count in coverage, gaps and update flags. Writers can change it.
+  const qc = useQueryClient();
+  const canWrite = !!useMe().data?.canWrite;
+  const [saving, setSaving] = useState<string | null>(null);
+  const changeScope = async (body: { ids: string[]; inScope: boolean } | { preset: "all" | "selection" }, key: string) => {
+    setSaving(key);
+    try {
+      await apiSend("/api/controls", body, "PATCH");
+      await qc.invalidateQueries();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Scope change failed.");
+    } finally {
+      setSaving(null);
+    }
+  };
   const fam = facets.data?.frameworks.find((f) => f.family === s.family);
 
   const columns = useMemo<ColumnDef<ControlRow, unknown>[]>(() => [
-    { id: "controlName", header: "Control ID", size: 160, cell: ({ row }) => <span className="flex items-center gap-2"><Mono className="whitespace-nowrap font-medium text-fg">{row.original.controlName}</Mono>{row.original.review && <Badge tone="warning" title={`${row.original.review.label}: ${row.original.review.count} mapping change(s) to review`}><GitCompareArrows /> Mapping affected</Badge>}</span> },
+    {
+      id: "inScope", header: "In scope", size: 84, enableSorting: false,
+      cell: ({ row }) => {
+        const c = row.original;
+        if (!canWrite) return c.inScope ? <Badge tone="success">In scope</Badge> : <Badge tone="outline">Out of scope</Badge>;
+        return (
+          <button
+            role="switch" aria-checked={c.inScope} aria-label={`${c.controlName} in scope`} disabled={!!saving}
+            title={c.inScope ? "In the client's scope. Select to exclude." : "Out of scope. Select to include."}
+            onClick={(e) => { e.stopPropagation(); changeScope({ ids: [c.id], inScope: !c.inScope }, c.id); }}
+            className={cn("grid size-5 place-items-center rounded border transition-colors", c.inScope ? "border-success bg-success text-white" : "border-border-strong bg-surface hover:border-fg")}
+          >
+            {saving === c.id ? <Loader2 className="size-3 animate-spin" /> : c.inScope && <Check className="size-3.5" />}
+          </button>
+        );
+      },
+    },
+    { id: "controlName", header: "Control ID", size: 160, cell: ({ row }) => <span className={cn("flex flex-wrap items-center gap-2", !row.original.inScope && "opacity-50")}><Mono className="whitespace-nowrap font-medium text-fg">{row.original.controlName}</Mono>{row.original.inClientSelection && <Badge tone="outline" title="Listed on the workbook's client selection sheet (CCFv2)">Client selection</Badge>}{row.original.review && <Badge tone="warning" title={`${row.original.review.label}: ${row.original.review.count} mapping change(s) to review`}><GitCompareArrows /> Mapping affected</Badge>}</span> },
     {
       id: "frameworkUpdate", header: "Framework update", size: 190, enableSorting: false,
       cell: ({ row }) => {
@@ -83,12 +120,14 @@ export function ControlRegister() {
         return <Badge tone={k.tone} title={us.map((u) => UPDATE_KIND[u.kind].line(u)).join("\n")}><BellRing /> {k.badge}{us.length > 1 ? ` · ${us.length} frameworks` : `: ${us[0].short}${us[0].to ? ` → ${us[0].to}` : ""}`}</Badge>;
       },
     },
-    { id: "title", header: "Control title", cell: ({ row }) => <div className="line-clamp-2 text-fg">{row.original.title ?? <span className="text-subtle">No title</span>}</div> },
-  ], []);
+    { id: "title", header: "Control title", cell: ({ row }) => <div className={cn("line-clamp-2 text-fg", !row.original.inScope && "opacity-50")}>{row.original.title ?? <span className="text-subtle">No title</span>}</div> },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [canWrite, saving]);
+  const scope = facets.data?.scope;
 
   const updates = facets.data?.updates ?? [];
   const affected = updates.reduce((n, u) => Math.max(n, u.controls), 0);
-  const active = !!(s.q || s.mapping || s.family || s.category || s.scope || s.prefix);
+  const active = !!(s.q || s.mapping || s.family || s.category || s.scope || s.prefix || s.inScope);
   const opts = (xs?: { value: string; count: number }[]) => (xs ?? []).map((x) => ({ value: x.value, label: x.value, hint: formatNumber(x.count) }));
 
   // Client layer is empty until the client uploads its controls.
@@ -146,6 +185,26 @@ export function ControlRegister() {
           </ul>
         </Card>
       )}
+      {scope && scope.total > 0 && (
+        <Card className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+          <div className="min-w-0 flex-1 text-[13px]">
+            <div className="font-semibold text-fg">Client scope: {formatNumber(scope.inScope)} of {formatNumber(scope.total)} controls</div>
+            <div className="text-xs text-muted">
+              Controls in scope count in coverage, gaps and framework update flags; out-of-scope controls stay visible and mapped.
+              {scope.selection > 0 && ` The workbook lists ${formatNumber(scope.selection)} as the client's selection (CCFv2).`}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant={s.inScope === "out" ? "primary" : "secondary"} onClick={() => set({ inScope: s.inScope === "out" ? "" : "out", page: "1" })}>{formatNumber(scope.total - scope.inScope)} out of scope</Button>
+            {canWrite && scope.inScope < scope.total && (
+              <Button size="sm" disabled={!!saving} onClick={() => changeScope({ preset: "all" }, "all")}>{saving === "all" && <Loader2 className="animate-spin" />}Include all {formatNumber(scope.total)}</Button>
+            )}
+            {canWrite && scope.selection > 0 && (scope.inScope !== scope.selection || scope.selectionInScope !== scope.selection) && (
+              <Button size="sm" disabled={!!saving} onClick={() => changeScope({ preset: "selection" }, "selection")}>{saving === "selection" && <Loader2 className="animate-spin" />}Only the client selection ({formatNumber(scope.selection)})</Button>
+            )}
+          </div>
+        </Card>
+      )}
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
           <div className="relative min-w-[240px] flex-1">
@@ -164,6 +223,11 @@ export function ControlRegister() {
               aria-label="Filter by framework version"
             />
           )}
+          <Select
+            value={s.inScope} onChange={(v) => set({ inScope: v, page: "1" })} allLabel="All controls" placeholder="Client scope"
+            options={[{ value: "in", label: "In scope" }, { value: "out", label: "Out of scope" }, ...(scope?.selection ? [{ value: "selection", label: "Client selection (CCFv2)" }] : [])]}
+            aria-label="Filter by client scope"
+          />
           <Select value={s.category} onChange={(v) => set({ category: v })} allLabel="All categories" placeholder="Category" options={opts(facets.data?.categories)} aria-label="Filter by category" />
           <Select value={s.scope} onChange={(v) => set({ scope: v })} allLabel="All scopes" placeholder="Scope" options={opts(facets.data?.scopes)} aria-label="Filter by scope" />
           <Select value={s.prefix} onChange={(v) => set({ prefix: v })} allLabel="All domains" placeholder="Domain" options={opts(facets.data?.prefixes)} aria-label="Filter by control domain" />
@@ -173,7 +237,7 @@ export function ControlRegister() {
             aria-label="Filter by mapping status"
           />
           <Button variant={s.mapping === "review" ? "primary" : "secondary"} size="sm" onClick={() => set({ mapping: s.mapping === "review" ? "" : "review", page: "1" })}><GitCompareArrows /> Needs review</Button>
-          {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", mapping: "", family: "", frameworkId: "", category: "", scope: "", prefix: "" }); }}><X /> Clear</Button>}
+          {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", mapping: "", family: "", frameworkId: "", category: "", scope: "", prefix: "", inScope: "" }); }}><X /> Clear</Button>}
         </div>
         <div className="px-4 py-2 text-xs text-muted tabular">{list.data ? `${formatNumber(list.data.total)} controls` : "…"}</div>
         <DataTable

@@ -97,8 +97,10 @@ async function writeControls(tx: Prisma.TransactionClient, ds: NormalisedDataset
   // Keep the mapping being replaced so the previous approved mapping stays traceable.
   const previous = await tx.ccfControl.findMany({
     where: { OR: [{ clientId: client.id }, { clientId: null }] },
-    select: { controlName: true, obligations: { select: { mappingType: true, citation: { select: { sourceSectionId: true } } } } },
+    select: { controlName: true, inScope: true, obligations: { select: { mappingType: true, citation: { select: { sourceSectionId: true } } } } },
   });
+  // The client's scope choices survive a re-import.
+  const scope = new Map(previous.map((p) => [p.controlName, p.inScope]));
   await tx.importJob.update({
     where: { id: jobId },
     data: { clientId: client.id, previousMapping: json(previous.map((p) => ({ control: p.controlName, obligations: p.obligations.map((o) => o.citation.sourceSectionId) }))) },
@@ -106,7 +108,7 @@ async function writeControls(tx: Prisma.TransactionClient, ds: NormalisedDataset
   // Replace this client's controls (cascades to procedures, links, evidence and pending proposals).
   await tx.ccfControl.deleteMany({ where: { OR: [{ clientId: client.id }, { clientId: null }] } });
   await chunked(ds.controls, 200, (b) =>
-    tx.ccfControl.createMany({ data: b.map((c) => ({ ...c, clientId: client.id, raw: json(c.raw), workingRaw: undefined, importJobId: jobId })) as Prisma.CcfControlCreateManyInput[] }));
+    tx.ccfControl.createMany({ data: b.map((c) => ({ ...c, inScope: scope.get(String(c.controlName)) ?? c.inScope ?? true, clientId: client.id, raw: json(c.raw), workingRaw: undefined, importJobId: jobId })) as Prisma.CcfControlCreateManyInput[] }));
   await chunked(ds.testProcedures, 500, (b) => tx.testProcedure.createMany({ data: b.map((t) => ({ ...t, procedureId: t.procedureId ?? null })) }));
   await chunked(ds.procedureLinks, 1000, (b) => tx.testProcedureObligation.createMany({ data: b }));
   await chunked(ds.controlObligations, 1000, (b) => tx.controlObligation.createMany({ data: b }));

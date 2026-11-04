@@ -159,20 +159,20 @@ export default async function OverviewPage() {
   const [reqRows, checks, controls, mappedControls, links, procedures, evidence, covered, procSpread, proposals, reviewedWithReason, lastImport, pairs, updates] = await Promise.all([
     prisma.citation.groupBy({ by: ["frameworkId"], _count: { _all: true } }),
     prisma.updateCheck.findMany({ where: { frameworkId: { in: ids } }, orderBy: { checkedAt: "desc" }, select: { frameworkId: true, status: true, checkedAt: true } }),
-    prisma.ccfControl.count(),
-    prisma.ccfControl.count({ where: { obligations: { some: {} } } }),
-    prisma.controlObligation.count(),
-    prisma.testProcedure.count(),
-    prisma.evidenceRequirement.count(),
+    prisma.ccfControl.count({ where: { inScope: true } }),
+    prisma.ccfControl.count({ where: { inScope: true, obligations: { some: {} } } }),
+    prisma.controlObligation.count({ where: { control: { inScope: true } } }),
+    prisma.testProcedure.count({ where: { control: { inScope: true } } }),
+    prisma.evidenceRequirement.count({ where: { control: { inScope: true } } }),
     // Per document: requirements linked to at least one client control, and the controls involved.
     prisma.$queryRaw<{ fw: string; reqs: bigint; ctrls: bigint }[]>`
       SELECT c."frameworkId" AS fw, COUNT(DISTINCT c.id) AS reqs, COUNT(DISTINCT o."controlId") AS ctrls
-      FROM "ControlObligation" o JOIN "Citation" c ON c.id = o."citationId" GROUP BY 1`,
+      FROM "ControlObligation" o JOIN "Citation" c ON c.id = o."citationId" JOIN "CcfControl" k ON k.id = o."controlId" AND k."inScope" GROUP BY 1`,
     // Test procedures by how many documents they provide evidence for.
     prisma.$queryRaw<{ n: bigint; procs: bigint }[]>`
       SELECT n, COUNT(*) AS procs FROM (
         SELECT t."testProcedureId", COUNT(DISTINCT c."frameworkId") AS n
-        FROM "TestProcedureObligation" t JOIN "Citation" c ON c.id = t."citationId" GROUP BY 1) x
+        FROM "TestProcedureObligation" t JOIN "Citation" c ON c.id = t."citationId" JOIN "TestProcedure" p ON p.id = t."testProcedureId" JOIN "CcfControl" k ON k.id = p."controlId" AND k."inScope" GROUP BY 1) x
       GROUP BY n`,
     prisma.mappingProposal.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.mappingProposal.count({ where: { status: { in: ["APPROVED", "REJECTED"] }, reviewedBy: { not: null } } }),

@@ -33,13 +33,13 @@ interface Preview {
 }
 
 const ROLE_LABEL: Record<string, string> = {
-  SOURCES: "Frameworks", CITATIONS: "Regulatory obligations", REQUIREMENTS: "Mapping groups", CONTROLS: "CCF controls (authoritative)",
+  SOURCES: "Frameworks", CITATIONS: "Regulatory obligations", REQUIREMENTS: "Mapping groups", CONTROLS: "Control register (all imported)", CONTROLS_SELECTION: "Client selection (marked)",
   CONTROLS_WORKING: "CCF working sheet", METRICS: "Validation only", IR_ID_LIST: "Validation only", UNMAPPED_REVIEW: "Unmapped review", UNRECOGNISED: "Not imported",
   PROCEDURE_MAP: "Test procedure mapping", SOURCE_LIST: "Framework list (checked)", SOURCE_METADATA: "Framework details",
   VERSION_TRANSITIONS: "Version transitions", CROSS_FRAMEWORK: "Framework relationships",
 };
 const COUNT_LABEL: Record<string, string> = {
-  frameworks: "Frameworks", citations: "Regulatory obligations", citationLinks: "Obligation links", requirements: "Mapping groups", controls: "CCF controls",
+  frameworks: "Frameworks", citations: "Regulatory obligations", citationLinks: "Obligation links", requirements: "Mapping groups", controls: "Controls",
   mappings: "Control mappings (both sheets)", authoritativeMappings: "Authoritative mappings", testProcedures: "Test procedures", evidence: "Evidence statements",
   frameworkReferences: "Framework references", reviews: "Unmapped review rows", rows: "Transition rows",
   procedureLinks: "Test procedure → obligation links", controlObligations: "Control → obligation mappings",

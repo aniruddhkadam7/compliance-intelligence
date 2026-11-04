@@ -162,6 +162,11 @@ model CcfControl {
   /// Review fields only present on the working sheet.
   gskReviewStatus           String? /// "GSK Ready for Review?" (Metadata(CCFv2))
   gskApproval               String? /// "GSK Approved OR  To Discuss" (Metadata(CCFv2))
+  /// In the client's scope: counted in coverage, gaps and update flags. All controls start in scope; the client
+  /// can narrow it, and a re-import keeps each control's choice.
+  inScope                   Boolean  @default(true)
+  /// Listed on the workbook's client selection sheet ("CCFv2") when the full catalogue is imported.
+  inClientSelection         Boolean  @default(false)
   raw                       Json /// authoritative sheet row
   workingRaw                Json? /// matching "Metadata(CCFv2)" row
   sourceSheet               String

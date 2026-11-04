@@ -29,6 +29,7 @@ export const ISSUE_LABELS: Record<string, string> = {
   DOCUMENT_ADDED: "New document",
   RELATIONSHIP_MATRIX: "Relationship sheet read",
   CONTROLS_OUTSIDE_REGISTER: "Controls outside the client register",
+  CONTROL_REGISTER: "Control register and client selection",
   PROCEDURE_UNMAPPED: "Test procedure without mapping",
   UNMAPPED_CONTROLS: "Controls without mapping",
   MAPPING_SUMMARY: "Mapping summary",

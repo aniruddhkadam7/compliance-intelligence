@@ -2,7 +2,9 @@
 // controls mapped through test procedures to those Source Section IDs.
 //
 //   "Citation Sources"           Parent Source ID | Authoritative Source | Source Section ID | Source Section Name | Source Section Description
-//   "CCFv2"                      client controls (same columns as the CCF register)
+//   "Control Framework (CCF)"    the full control register (imported when present)
+//   "CCFv2"                      the client's selection of controls (same columns); the register when there is no
+//                                full register sheet
 //   mapping sheet                Control ID | Test Procedure ID | Test Procedure | Source Section ID (one or more) | Source Section Name
 //   "Authoritative Sources"      framework list (checked against the citation sheet)
 //   "ArC Parent Sources (Metadata)"  optional framework metadata (type, group, jurisdiction, URL, applicability), matched by name
@@ -19,6 +21,7 @@ import { deriveFamily, deriveVersion } from "@/lib/frameworks";
 export const SOURCE_ID_SHEETS = {
   obligations: "Citation Sources",
   controls: "CCFv2",
+  register: "Control Framework (CCF)",
   sourceList: "Authoritative Sources",
   sourceMetadata: "ArC Parent Sources (Metadata)",
 } as const;
@@ -34,9 +37,20 @@ function mappingSheet(wb: ParsedWorkbook) {
   return wb.sheetNames.map((n) => wb.sheets.get(n)!).find((s) => hasColumns(s, MAPPING_COLUMNS));
 }
 
-/** The client control register: "CCFv2" by name, otherwise any sheet with a control-name column. */
+/**
+ * The control register: the full "Control Framework (CCF)" sheet when present, else "CCFv2", else any sheet with a
+ * control-name column (working "(Metadata)" copies excluded). Every control is imported; the client chooses its scope.
+ */
 function controlSheet(wb: ParsedWorkbook) {
-  return wb.sheets.get(SOURCE_ID_SHEETS.controls) ?? wb.sheetNames.map((n) => wb.sheets.get(n)!).find((sh) => hasColumns(sh, ["New Common Control Name"]));
+  const named = (n: string) => { const sh = wb.sheets.get(n); return sh && hasColumns(sh, ["New Common Control Name"]) ? sh : undefined; };
+  return named(SOURCE_ID_SHEETS.register) ?? named(SOURCE_ID_SHEETS.controls)
+    ?? wb.sheetNames.filter((n) => !/\(metadata\)/i.test(n)).map((n) => wb.sheets.get(n)!).find((sh) => hasColumns(sh, ["New Common Control Name"]));
+}
+
+/** The client's selection ("CCFv2") when the full register is imported from another sheet. */
+function selectionSheet(wb: ParsedWorkbook, register: ParsedSheet | undefined) {
+  const sh = wb.sheets.get(SOURCE_ID_SHEETS.controls);
+  return sh && register && sh.name !== register.name && hasColumns(sh, ["New Common Control Name"]) ? sh : undefined;
 }
 
 /** Workbook contains a document library ("Citation Sources"). */
@@ -58,11 +72,13 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
   const obSheet = wb.sheets.get(SOURCE_ID_SHEETS.obligations);
   const mapSheet = mappingSheet(wb);
   const ctlSheet = controlSheet(wb);
+  const selSheet = selectionSheet(wb, ctlSheet);
 
   const roleOf = (name: string): SheetRole =>
     name === obSheet?.name ? "CITATIONS"
       : name === mapSheet?.name ? "PROCEDURE_MAP"
       : name === ctlSheet?.name ? "CONTROLS"
+      : name === selSheet?.name ? "CONTROLS_SELECTION"
       : name === SOURCE_ID_SHEETS.sourceList ? "SOURCE_LIST"
       : name === SOURCE_ID_SHEETS.sourceMetadata ? "SOURCE_METADATA"
       : "UNRECOGNISED";
@@ -207,6 +223,8 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
     const rc = reader(ctlSheet_);
     const nameCol = rc.col("New Common Control Name")!;
     const controlByName = new Map<string, string>();
+    const selection = new Set<string>();
+    if (selSheet) { const rs = reader(selSheet); for (const { values } of selSheet.rows) { const n = clean(values[rs.col("New Common Control Name")!]); if (n) selection.add(n); } }
     for (const { rowNumber, values } of ctlSheet_.rows) {
       const controlName = clean(values[nameCol]);
       if (!controlName) continue;
@@ -219,7 +237,7 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
       ds.controls.push({
         id: cid, controlName, domainPrefix: controlName.replace(/-\d+$/, ""),
         ...controlFields((h) => rc.get(values, h)),
-        gskReviewStatus: null, gskApproval: null,
+        gskReviewStatus: null, gskApproval: null, inScope: true, inClientSelection: selection.has(controlName),
         raw: values, workingRaw: null, sourceSheet: ctlSheet_.name, sourceRow: rowNumber,
       });
       for (const [column, kind] of [["Test Procedures", "CCF_V2"]] as const) {
@@ -270,6 +288,11 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
         }
       }
     }
+    if (selSheet)
+      issues.push({
+        severity: "INFO", code: "CONTROL_REGISTER", sheet: ctlSheet_.name,
+        message: `All ${ds.controls.length} controls on “${ctlSheet_.name}” are imported and in scope; the ${selection.size} listed on “${selSheet.name}” are marked as the client's selection. The client can change the scope on Client Control Mapping.`,
+      });
     if (outside.size)
       issues.push({
         severity: "INFO", code: "CONTROLS_OUTSIDE_REGISTER", sheet: mapSheet_.name,
