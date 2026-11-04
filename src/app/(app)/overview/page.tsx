@@ -26,7 +26,7 @@ function Tag({ children }: { children: React.ReactNode }) {
   return <span className="inline-block rounded bg-[#fff3a3] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#2e2e38]">{children}</span>;
 }
 
-/** Overview: what the platform does, with the size of the document library and the client's mapping. */
+/** Overview: what the platform does, with the size of the document library. Global only: no client figures. */
 export default async function OverviewPage() {
   const docs = await prisma.framework.findMany({ select: { name: true, type: true, jurisdiction: true } });
   if (docs.length === 0) {
@@ -41,11 +41,6 @@ export default async function OverviewPage() {
     );
   }
 
-  const [links, controls, mappings] = await Promise.all([
-    prisma.sourceRelationship.count({ where: { kind: "CROSS_FRAMEWORK", fromCitationId: { not: null }, toCitationId: { not: null } } }),
-    prisma.ccfControl.count({ where: { inScope: true } }),
-    prisma.controlObligation.count({ where: { control: { inScope: true } } }),
-  ]);
   // Framework coverage: documents by publisher, plus laws and jurisdictions; largest first.
   const coverage = [
     ...tally(docs.map((d) => publisherOf(d.name))).filter(([k]) => k !== "Other").map(([label, n]) => ({ n, label })),
@@ -88,7 +83,7 @@ export default async function OverviewPage() {
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Capabilities</div>
           <h2 className="mt-0.5 text-[17px] font-semibold tracking-tight text-fg">What the platform offers</h2>
         </div>
-        <Capabilities frameworks={docs.length} coverage={coverage} connected={{ links, controls, mappings }} />
+        <Capabilities frameworks={docs.length} coverage={coverage} />
       </section>
 
       {/* Closing banner */}

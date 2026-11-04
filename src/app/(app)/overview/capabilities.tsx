@@ -1,12 +1,11 @@
 "use client";
 import { useState } from "react";
-import { ArrowRight, ChevronDown, Layers, Network, RefreshCcw, ScanSearch, Sparkles, type LucideIcon } from "lucide-react";
+import { ArrowRight, ChevronDown, Gauge, Layers, Network, RefreshCcw, ScanSearch, ShieldCheck, Sparkles, type LucideIcon } from "lucide-react";
 import { cn, formatNumber } from "@/lib/utils";
 
 interface Props {
   frameworks: number;
   coverage: { n: number; label: string }[];
-  connected: { links: number; controls: number; mappings: number };
 }
 
 const STEPS: { icon: LucideIcon; title: string; sub: string }[] = [
@@ -15,12 +14,18 @@ const STEPS: { icon: LucideIcon; title: string; sub: string }[] = [
   { icon: Network, title: "Control mapping", sub: "Map requirements to existing controls" },
 ];
 
+const CONNECTED: { icon: LucideIcon; title: string; sub: string }[] = [
+  { icon: Network, title: "Framework relationships", sub: "See how frameworks map to each other" },
+  { icon: ShieldCheck, title: "Control coverage", sub: "Link every requirement to the controls you run" },
+  { icon: Gauge, title: "Gap visibility", sub: "See what's met, partly met and open" },
+];
+
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-success">{children}</div>;
 }
 
 /** "What the platform offers": one panel open at a time, the library first. */
-export function Capabilities({ frameworks, coverage, connected }: Props) {
+export function Capabilities({ frameworks, coverage }: Props) {
   const [open, setOpen] = useState<number | null>(0);
   const items: { icon: LucideIcon; title: string; aside?: React.ReactNode; body: React.ReactNode }[] = [
     {
@@ -78,14 +83,11 @@ export function Capabilities({ frameworks, coverage, connected }: Props) {
           <h3 className="mt-1.5 text-[19px] font-semibold leading-snug tracking-tight text-fg">Every requirement.<br />Connected to your controls.</h3>
           <p className="mt-1.5 max-w-xl text-[12.5px] text-muted">See how frameworks relate, which controls cover each requirement, and where gaps remain, in one connected view.</p>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            {[
-              { n: connected.links, label: "Framework relationships" },
-              { n: connected.mappings, label: "Control-to-requirement links" },
-              { n: connected.controls, label: "Client controls in scope" },
-            ].map((s) => (
-              <div key={s.label} className="rounded-md border border-success/20 bg-success-soft px-3 py-2.5">
-                <div className="text-[15px] font-semibold tabular text-fg">{formatNumber(s.n)}</div>
-                <div className="text-[11px] text-muted">{s.label}</div>
+            {CONNECTED.map((s) => (
+              <div key={s.title} className="rounded-md border border-success/20 bg-success-soft px-3 py-2.5">
+                <div className="flex items-center gap-1.5 text-[11px] text-success"><s.icon className="size-3.5" /></div>
+                <div className="mt-1 text-[12px] font-semibold text-fg">{s.title}</div>
+                <div className="text-[11px] text-muted">{s.sub}</div>
               </div>
             ))}
           </div>
