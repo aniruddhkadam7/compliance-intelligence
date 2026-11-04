@@ -16,12 +16,7 @@ const TYPE_COLORS = ["var(--chart-1)", "var(--chart-3)", "var(--chart-5)", "var(
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const byId = (x: string, y: string) => x.localeCompare(y, undefined, { numeric: true });
-/** Title after the identifier, when the heading carries one ("AC-02(01)-AUTOMATED SYSTEM ACCOUNT…"). */
-const titleOf = (s: Sec) => {
-  const i = s.sectionName.indexOf(s.identifier);
-  const rest = i >= 0 ? s.sectionName.slice(i + s.identifier.length).replace(/^[\s\-–:]+/, "") : "";
-  return rest ? rest.charAt(0) + rest.slice(1).toLowerCase() : "";
-};
+const titleOf = (s: Sec) => s.title;
 
 /**
  * Framework relationship graph: the requirements of one domain of framework A (left) and the requirements of
@@ -86,9 +81,9 @@ export function RelationshipGraph({ data, colors }: { data: FrameworkConnection;
       <g key={key} opacity={on ? 1 : 0.25} className="cursor-pointer" onMouseEnter={() => setHover(key)} onMouseLeave={() => setHover(null)} onClick={() => setPinned(pinned === key ? null : key)}>
         <circle cx={x} cy={y} r={pinned === key ? 6 : 4.5} fill={side === "a" ? colors.a : colors.b} stroke="var(--surface)" strokeWidth={1.5} />
         <text x={tx} y={y} dominantBaseline="middle" textAnchor={anchor} className="text-[12px]">
-          {side === "b" && <tspan className="fill-[var(--fg)] font-mono font-medium">{s.identifier}</tspan>}
-          {title && <tspan className="fill-[var(--muted)]">{side === "b" ? "  " : ""}{clip(title, 34)}{side === "a" ? "  " : ""}</tspan>}
-          {side === "a" && <tspan className="fill-[var(--fg)] font-mono font-medium">{s.identifier}</tspan>}
+          {side === "b" && <tspan className="fill-[var(--fg)] font-mono font-medium">{clip(s.identifier, 20)}</tspan>}
+          {title && <tspan className="fill-[var(--muted)]">{side === "b" ? "  " : ""}{clip(title, 26)}{side === "a" ? "  " : ""}</tspan>}
+          {side === "a" && <tspan className="fill-[var(--fg)] font-mono font-medium">{clip(s.identifier, 20)}</tspan>}
           <title>{`${s.identifier}${title ? ` ${title}` : ""}`}</title>
         </text>
       </g>

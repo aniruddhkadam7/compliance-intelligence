@@ -21,8 +21,7 @@ const WARM: Record<string, Warm[]> = {
     { key: ["citations", citationQuery], url: `/api/citations${qs({ ...citationQuery })}` },
   ],
   "/mappings": [
-    { key: ["fm-pairs", "controls"], url: "/api/framework-matrix?basis=controls" },
-    { key: ["fm-coverage"], url: "/api/framework-matrix?view=coverage" },
+    { key: ["fm-pairs", "supplied"], url: "/api/framework-matrix?basis=supplied" },
     { key: ["frameworks", "", "", "", ""], url: "/api/frameworks" },
   ],
   "/controls": [
