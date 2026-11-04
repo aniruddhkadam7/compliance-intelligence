@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, BellRing, Check, GitCompareArrows, Grid3x3, ListChecks, Loader2, RefreshCw, X } from "lucide-react";
+import { ArrowRight, BellRing, Check, GitCompareArrows, Grid3x3, ListChecks, Loader2, X } from "lucide-react";
 import { EmptyState, ErrorState, Mono, Page, PageHeader, StatStrip } from "@/components/common";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge, type Tone } from "@/components/ui/badge";
@@ -53,7 +53,7 @@ const PROPOSAL_STATUS: Record<string, Tone> = { PENDING: "warning", APPROVED: "s
 /** "EU AI Act 2024": short names of laws carry no version, so it is added wherever a version is named. */
 const vname = (r: Ref | null | undefined) => (!r ? "—" : r.version && !r.short.includes(r.version) ? `${r.short} ${r.version}` : r.short);
 
-export function ChangeAnalytics({ canWrite = false }: { canWrite?: boolean }) {
+export function ChangeAnalytics() {
   const [s, set] = useUrlState({ update: "", tab: "controls", kind: "", control: "" });
   const list = useQuery({ queryKey: ["change-analytics"], queryFn: () => apiGet<Update[]>("/api/change-analytics") });
   const selected = s.update || list.data?.[0]?.id || "";
@@ -62,7 +62,6 @@ export function ChangeAnalytics({ canWrite = false }: { canWrite?: boolean }) {
   return (
     <Page>
       <PageHeader title={TERMS.versionImpact} description="What changed between an approved framework version and the one before it, and which client controls are affected. Mapping changes take effect only when approved." />
-      <LibraryComparisons canWrite={canWrite} onOpen={(id) => set({ update: id })} />
       {list.isLoading && <Skeleton className="h-60" />}
       {!!list.error && <Card><ErrorState error={list.error} onRetry={list.refetch} /></Card>}
       {list.data && !list.data.length && (
@@ -87,45 +86,6 @@ export function ChangeAnalytics({ canWrite = false }: { canWrite?: boolean }) {
         </div>
       )}
     </Page>
-  );
-}
-
-interface Pair { family: string; previous: { id: string; label: string }; current: { id: string; label: string }; updateId: string | null; crosswalk: boolean; canRecompute: boolean }
-
-/** Consecutive versions of a framework that are both in the library, so they can be compared without an upload. */
-function LibraryComparisons({ canWrite, onOpen }: { canWrite: boolean; onOpen: (id: string) => void }) {
-  const qc = useQueryClient();
-  const [busy, setBusy] = useState("");
-  const pairs = useQuery({ queryKey: ["change-analytics", "pairs"], queryFn: () => apiGet<Pair[]>("/api/change-analytics/compare") });
-  if (!pairs.data?.length) return null;
-  const run = async (p: Pair, refresh: boolean) => {
-    setBusy(p.current.id);
-    try {
-      const r = await apiSend<{ id: string; proposals: number }>("/api/change-analytics/compare", { previousId: p.previous.id, currentId: p.current.id, refresh });
-      toast.success(`${p.previous.label} → ${p.current.label} compared${r.proposals ? `; ${r.proposals} mapping suggestion(s) to review` : ""}`);
-      await qc.invalidateQueries({ queryKey: ["change-analytics"] });
-      onOpen(r.id);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Comparison failed"); }
-    finally { setBusy(""); }
-  };
-  return (
-    <Card>
-      <CardHeader title="Versions in the library" description="Both versions are already loaded, so they can be compared directly. Where the publisher's own crosswalk is imported (NIST CSF 1.1 → 2.0), it decides what was renumbered, split or combined." icon={<GitCompareArrows />} />
-      <ul className="divide-y divide-border">
-        {pairs.data.map((p) => (
-          <li key={p.current.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-xs">
-            <span className="font-medium text-fg">{p.previous.label} <ArrowRight className="inline size-3 text-subtle" /> {p.current.label}</span>
-            {p.updateId ? <Badge tone="success">Compared</Badge> : <Badge tone="neutral">Not compared</Badge>}
-            {p.updateId && (p.crosswalk ? <Badge tone="info">Publisher crosswalk applied</Badge> : <span className="text-muted">Matched by identifier and wording</span>)}
-            <span className="ml-auto flex gap-2">
-              {p.updateId && <Button size="sm" variant="ghost" onClick={() => onOpen(p.updateId!)}>View</Button>}
-              {canWrite && !p.updateId && <Button size="sm" variant="primary" disabled={!!busy} onClick={() => run(p, false)}>{busy === p.current.id ? <Loader2 className="animate-spin" /> : <GitCompareArrows />} Compare</Button>}
-              {canWrite && p.updateId && <Button size="sm" disabled={!!busy || !p.canRecompute} title={p.canRecompute ? undefined : "Mapping suggestions from this comparison have been reviewed"} onClick={() => run(p, true)}>{busy === p.current.id ? <Loader2 className="animate-spin" /> : <RefreshCw />} Recompute</Button>}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Card>
   );
 }
 

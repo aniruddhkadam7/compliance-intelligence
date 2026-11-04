@@ -18,7 +18,7 @@ interface Analysis {
 /** Library row identifier: hierarchical names, or "NIST SP 800-53 r5.1.1: AC-02(01)-TITLE". */
 const identifierOf = (name: string) => parseHeading(name).identifier;
 
-/** Creates mapping proposals for controls mapped to the previous version (idempotent per version update). */
+/** Creates mapping proposals for in-scope controls mapped to the previous version (idempotent per version update). */
 export async function generateProposals(ingestionId: string, actor: string) {
   const ing = await prisma.aiIngestion.findUniqueOrThrow({ where: { id: ingestionId }, select: { matchFrameworkId: true, publishedFrameworkId: true, analysis: true } });
   const a = (ing.analysis ?? {}) as Analysis;
@@ -26,7 +26,7 @@ export async function generateProposals(ingestionId: string, actor: string) {
   if (await prisma.mappingProposal.count({ where: { ingestionId } })) return { created: 0 };
 
   const [oldRows, newRows] = await Promise.all([
-    prisma.citation.findMany({ where: { frameworkId: ing.matchFrameworkId }, select: { id: true, sectionName: true, controls: { select: { controlId: true, control: { select: { clientId: true } } } } } }),
+    prisma.citation.findMany({ where: { frameworkId: ing.matchFrameworkId }, select: { id: true, sectionName: true, controls: { select: { controlId: true, control: { select: { clientId: true, inScope: true } } } } } }),
     prisma.citation.findMany({ where: { frameworkId: ing.publishedFrameworkId }, select: { id: true, sectionName: true } }),
   ]);
   const newByKey = new Map(newRows.map((c) => [idKey(identifierOf(c.sectionName) ?? c.id), c.id]));
@@ -41,6 +41,7 @@ export async function generateProposals(ingestionId: string, actor: string) {
     const rel = id ? relByOld.get(idKey(id)) : undefined;
     if (!rel) continue;
     for (const m of old.controls) {
+      if (!m.control.inScope) continue; // controls the client has taken out of scope get no suggestions
       const base = { clientId: m.control.clientId ?? fallback, controlId: m.controlId, changeType: rel.kind, confidence: rel.confidence, ingestionId, createdBy: actor };
       if (rel.kind === "REMOVED") data.push({ ...base, action: "FLAG_REMOVED", citationId: old.id, reason: `${id} no longer exists in the new version. ${rel.explanation} Review whether this control still needs a requirement in the new version.` });
       else for (const t of rel.to) {

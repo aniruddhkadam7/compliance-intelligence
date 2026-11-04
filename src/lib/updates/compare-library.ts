@@ -129,3 +129,22 @@ export async function recordLibraryComparison(previousId: string, currentId: str
   const proposals = await generateProposals(id, actor);
   return { id, created: !existing, proposals: proposals.created };
 }
+
+let ensuring: Promise<void> | null = null;
+
+/**
+ * Keeps Change Analytics current without anyone asking: every pair of consecutive library versions gets a
+ * comparison, and a comparison made before the publisher's crosswalk was imported is redone (only while none of
+ * its suggestions has been reviewed). One run at a time; a failure leaves the pair for the next visit.
+ */
+export function ensureLibraryComparisons(actor = "system") {
+  ensuring ??= (async () => {
+    for (const p of await libraryComparisonPairs()) {
+      try {
+        if (!p.updateId) await recordLibraryComparison(p.previous.id, p.current.id, actor);
+        else if (!p.crosswalk && p.canRecompute && (await suppliedCrosswalk(p.previous.id, p.current.id)).length) await recordLibraryComparison(p.previous.id, p.current.id, actor, { refresh: true });
+      } catch (e) { console.error(`Library comparison ${p.previous.label} → ${p.current.label} failed:`, e); }
+    }
+  })().finally(() => { ensuring = null; });
+  return ensuring;
+}
