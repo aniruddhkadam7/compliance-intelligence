@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { CheckCircle2, ClipboardCheck, FileCheck2, FileText, GitBranch, ChevronRight, Link2, Search, Table2, XCircle, CircleDashed } from "lucide-react";
+import { ClipboardCheck, FileCheck2, FileText, GitBranch, ChevronRight, Link2, Search, Table2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -54,8 +54,8 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
+      <div>
+        <Card>
           <CardHeader
             title="Control → test procedure → framework → obligations"
             description="Each framework is shown separately under its test procedure with only its own obligations. Groups of eight or more obligations are collapsed; select one to expand."
@@ -71,16 +71,13 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
             {view === "list" ? <ClientControl c={c} /> : trace.nodes.length > 1 ? (
               <>
                 {/* Remount on expand so the view refits to the new graph. */}
-                <TraceGraph key={[...expanded].join(",")} nodes={trace.nodes} edges={trace.edges} onAction={onAction} height={560} />
+                <TraceGraph key={[...expanded].join(",")} nodes={trace.nodes} edges={trace.edges} onAction={onAction} height={760} />
                 {expanded.size > 0 && <Button size="sm" variant="ghost" onClick={() => setExpanded(new Set())}>Collapse all</Button>}
                 <GraphLegend />
               </>
             ) : <EmptyState title="No resolvable mapping" description="This control is not mapped to any regulatory obligation." />}
           </CardBody>
         </Card>
-        <div className="space-y-4">
-          <QualityIndicators c={c} />
-        </div>
       </div>
       <Card>
         <CardHeader
@@ -186,30 +183,6 @@ function ClientControl({ c }: { c: ControlDetail }) {
       </div>
       {hasDemo && <p className="text-[11px] text-muted">Obligations marked “Illustrative” are demonstration links, not recorded client mappings, and need validation.</p>}
     </>
-  );
-}
-
-/** Indicators derived only from fields present in the workbook. */
-function QualityIndicators({ c }: { c: ControlDetail }) {
-  const items: { ok: boolean | null; label: string; detail: string }[] = [
-    { ok: c.citationTotal > 0, label: "Control is mapped to obligations", detail: c.citationTotal ? `${c.citationTotal} obligations linked` : "No mapping recorded" },
-    { ok: !c.conflict, label: "Workbook sheets agree on the mapping", detail: c.conflict ? "The two control sheets differ" : "Same value on both sheets" },
-    { ok: c.gskReviewStatus ? c.gskReviewStatus === "GSK approved" : null, label: "Review status", detail: c.gskReviewStatus ?? "Not stated" },
-    { ok: c.testProcedures.length > 0, label: "Test procedure present", detail: `${c.testProcedures.length} test procedure records` },
-    { ok: c.evidence.some((e) => e.kind === "GO_LIVE"), label: "Go-live evidence defined", detail: c.evidence.some((e) => e.kind === "GO_LIVE") ? "Recommended Evidences (Go-live)" : "Column empty" },
-  ];
-  return (
-    <Card>
-      <CardHeader title="Mapping quality indicators" description="Derived only from workbook fields; no scores are inferred" />
-      <ul className="divide-y divide-border">
-        {items.map((i) => (
-          <li key={i.label} className="flex items-start gap-2.5 px-4 py-2">
-            {i.ok === null ? <CircleDashed className="mt-0.5 size-3.5 text-subtle" /> : i.ok ? <CheckCircle2 className="mt-0.5 size-3.5 text-success" /> : <XCircle className="mt-0.5 size-3.5 text-warning" />}
-            <div className="min-w-0"><div className="text-[13px] text-fg">{i.label}</div><div className="truncate text-[11px] text-muted">{i.detail}</div></div>
-          </li>
-        ))}
-      </ul>
-    </Card>
   );
 }
 

@@ -125,7 +125,9 @@ export function ControlRegister() {
   ], [canWrite, saving]);
   const scope = facets.data?.scope;
 
-  const updates = facets.data?.updates ?? [];
+  // Only updates the platform can act on: released and ready to install, or already in the library.
+  // Versions the publisher announced that the platform does not have yet are left out here.
+  const updates = (facets.data?.updates ?? []).filter((u) => u.kind !== "AVAILABLE");
   const affected = updates.reduce((n, u) => Math.max(n, u.controls), 0);
   const active = !!(s.q || s.mapping || s.family || s.category || s.scope || s.prefix || s.inScope);
   const opts = (xs?: { value: string; count: number }[]) => (xs ?? []).map((x) => ({ value: x.value, label: x.value, hint: formatNumber(x.count) }));
@@ -167,19 +169,26 @@ export function ControlRegister() {
             <BellRing className="size-4 text-warning" />
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-semibold text-fg">Framework updates affect the client&apos;s controls</div>
-              <div className="text-xs text-muted">{updates.length} mapped framework(s) have a newer version; {affected > 0 && `up to ${formatNumber(affected)} control(s) need their mapping checked.`}</div>
+              <div className="text-xs text-muted">{updates.length} mapped framework(s) have a newer version in the platform; {affected > 0 && `up to ${formatNumber(affected)} control(s) need their mapping checked.`}</div>
             </div>
             <Button size="sm" variant={s.mapping === "update" ? "primary" : "secondary"} onClick={() => set({ mapping: s.mapping === "update" ? "" : "update", frameworkId: "", family: "", page: "1" })}>
               {s.mapping === "update" ? "Show all controls" : "Show affected controls"}
             </Button>
           </div>
-          <ul className="divide-y divide-border text-xs">
+          <ul className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
             {updates.map((u) => (
-              <li key={u.frameworkId} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2">
-                <Badge tone={UPDATE_KIND[u.kind].tone}>{UPDATE_KIND[u.kind].badge}</Badge>
-                <span className="min-w-0 flex-1 text-fg-2">{UPDATE_KIND[u.kind].line(u)}{u.from && <span className="text-subtle"> · client mapped to {u.from}</span>}</span>
-                <button onClick={() => set({ mapping: "", family: "", frameworkId: u.frameworkId, page: "1" })} className="font-medium text-accent hover:underline">{formatNumber(u.controls)} control{u.controls === 1 ? "" : "s"}</button>
-                <Link href={`/sources/${u.frameworkId}`} className="inline-flex items-center gap-1 text-muted hover:text-fg">{u.kind === "READY" ? "Install update" : "View source"} <ArrowRight className="size-3" /></Link>
+              <li key={u.frameworkId} className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-[13px] font-semibold text-fg">{u.short}</span>
+                  <Badge tone={UPDATE_KIND[u.kind].tone}>{UPDATE_KIND[u.kind].badge}</Badge>
+                </div>
+                <div className="text-fg-2">
+                  {u.from ?? "—"} <ArrowRight className="inline size-3" /> {u.kind === "NEWER_IN_LIBRARY" ? (u.latest ?? u.to ?? "newer") : (u.to ?? "new")}
+                </div>
+                <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+                  <button onClick={() => set({ mapping: "", family: "", frameworkId: u.frameworkId, page: "1" })} className="font-medium text-accent hover:underline">{formatNumber(u.controls)} control{u.controls === 1 ? "" : "s"}</button>
+                  <Link href={`/sources/${u.frameworkId}`} className="inline-flex items-center gap-1 text-muted hover:text-fg">{u.kind === "READY" ? "Install update" : "View source"} <ArrowRight className="size-3" /></Link>
+                </div>
               </li>
             ))}
           </ul>
