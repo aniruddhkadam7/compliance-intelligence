@@ -30,7 +30,7 @@ function heat(n: number, max: number): React.CSSProperties {
 
 /**
  * Framework traceability, from supplied relationship files only (nothing is inferred).
- *   Overview        every framework against every other: the number of mapped relationships in each cell.
+ *   Relation Matrix every framework against every other: the number of mapped relationships in each cell.
  *   Relation Graph  any two frameworks: baseline and target, the graph, and the mapped controls side by side.
  * Kept separate from client control traceability (control → test procedures → obligations), on the control pages.
  */
@@ -57,7 +57,7 @@ export function MappingExplorer() {
       <PageHeader title={TERMS.frameworkMapping} description="How the frameworks relate: requirement-to-requirement relationships stated in the supplied relationship files. Nothing is inferred." />
       <Tabs value={view} onValueChange={(v) => set({ view: v })}>
         <TabsList className="mb-4">
-          <TabsTrigger value="overview"><Grid3x3 /> Overview</TabsTrigger>
+          <TabsTrigger value="overview"><Grid3x3 /> Relation Matrix</TabsTrigger>
           <TabsTrigger value="graph"><Share2 /> Relation Graph</TabsTrigger>
         </TabsList>
 
@@ -89,15 +89,17 @@ export function MappingExplorer() {
 function Matrix({ docs, label, count, onOpen }: { docs: Doc[]; label: (d: Doc) => string; count: (x: string, y: string) => number; onOpen: (a: string, b: string) => void }) {
   const [hot, setHot] = useState<{ r: string; c: string } | null>(null);
   const max = Math.max(1, ...docs.flatMap((r) => docs.map((c) => (r.id === c.id ? 0 : count(r.id, c.id)))));
+  /** Tint the hovered cell's whole row and column so its two frameworks can be followed across the grid. */
+  const line = (r: string, c: string) => (hot && (hot.r === r || hot.c === c) ? "bg-accent-soft" : "");
   return (
     <Card>
-      <div className="overflow-x-auto" onMouseLeave={() => setHot(null)}>
+      <div className="max-h-[calc(100vh-13rem)] overflow-auto" onMouseLeave={() => setHot(null)}>
         <table className="border-separate border-spacing-0 text-[11px]" aria-label="Framework relationship matrix">
           <thead>
             <tr>
-              <th className="sticky left-0 z-30 bg-surface" />
+              <th className="sticky left-0 top-0 z-30 bg-surface" />
               {docs.map((c) => (
-                <th key={c.id} className="h-32 min-w-7 px-px pb-2 align-bottom">
+                <th key={c.id} className={cn("sticky top-0 z-20 h-32 min-w-7 px-px pb-2 align-bottom", hot?.c === c.id ? "bg-accent-soft" : "bg-surface")}>
                   <div className={cn("mx-auto w-4 rotate-180 whitespace-nowrap font-medium [writing-mode:vertical-rl]", hot?.c === c.id ? "text-fg" : "text-muted")}>{label(c)}</div>
                 </th>
               ))}
@@ -106,12 +108,12 @@ function Matrix({ docs, label, count, onOpen }: { docs: Doc[]; label: (d: Doc) =
           <tbody>
             {docs.map((r) => (
               <tr key={r.id}>
-                <th className={cn("sticky left-0 z-10 whitespace-nowrap bg-surface pl-3 pr-2 text-right font-medium", hot?.r === r.id ? "text-fg" : "text-fg-2")}>{label(r)}</th>
+                <th className={cn("sticky left-0 z-10 whitespace-nowrap pl-3 pr-2 text-right font-medium", hot?.r === r.id ? "bg-accent-soft text-fg" : "bg-surface text-fg-2")}>{label(r)}</th>
                 {docs.map((c) => {
-                  if (r.id === c.id) return <td key={c.id} className="p-px"><div className="grid h-6 min-w-7 place-items-center rounded bg-surface-3 text-subtle" aria-hidden>—</div></td>;
+                  if (r.id === c.id) return <td key={c.id} className={cn("p-px", line(r.id, c.id))} onMouseEnter={() => setHot({ r: r.id, c: c.id })}><div className="grid h-6 min-w-7 place-items-center rounded bg-surface-3 text-subtle" aria-hidden>—</div></td>;
                   const n = count(r.id, c.id);
                   return (
-                    <td key={c.id} className="p-px">
+                    <td key={c.id} className={cn("p-px", line(r.id, c.id))}>
                       {n > 0 ? (
                         <button
                           onClick={() => onOpen(r.id, c.id)}
@@ -119,7 +121,7 @@ function Matrix({ docs, label, count, onOpen }: { docs: Doc[]; label: (d: Doc) =
                           title={`${label(r)} ↔ ${label(c)}: ${formatNumber(n)} mapped relationships. Select to inspect.`}
                           aria-label={`${label(r)} and ${label(c)}: ${n} mapped relationships`}
                           style={heat(n, max)}
-                          className="grid h-6 min-w-7 place-items-center rounded text-[10.5px] font-semibold tabular hover:ring-2 hover:ring-accent"
+                          className={cn("grid h-6 min-w-7 place-items-center rounded text-[10.5px] font-semibold tabular hover:ring-2 hover:ring-accent", hot && (hot.r === r.id || hot.c === c.id) && "ring-1 ring-accent/60")}
                         >{n}</button>
                       ) : (
                         <div onMouseEnter={() => setHot({ r: r.id, c: c.id })} title={`${label(r)} ↔ ${label(c)}: no supplied mapping`} className="grid h-6 min-w-7 place-items-center rounded text-subtle tabular">0</div>
