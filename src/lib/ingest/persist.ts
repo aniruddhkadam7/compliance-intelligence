@@ -4,6 +4,7 @@ import { parseWorkbook } from "./parse";
 import type { Issue, SheetSummary } from "./ccf-workbook";
 import { hasLibrary, normaliseSourceIdWorkbook } from "./source-id-workbook";
 import { applyRekey, planLibrary, type LibraryPlan } from "./library-sync";
+import { REFERENCE_SHEET } from "@/lib/reference/mappings";
 import type { NormalisedDataset } from "./ccf-workbook";
 import { isClientTemplate, normaliseClientTemplate } from "./client-template";
 import { normaliseRelationships, type RelationshipRow } from "./relationships-workbook";
@@ -86,7 +87,7 @@ async function writeLibrary(tx: Prisma.TransactionClient, ds: NormalisedDataset,
 async function writeRelationships(tx: Prisma.TransactionClient, rows: RelationshipRow[], jobId: string) {
   const kinds = [...new Set(rows.map((x) => x.kind))];
   if (!kinds.length) return;
-  await tx.sourceRelationship.deleteMany({ where: { kind: { in: kinds } } });
+  await tx.sourceRelationship.deleteMany({ where: { kind: { in: kinds }, sourceSheet: { not: REFERENCE_SHEET } } }); // the built-in reference mappings are not part of any upload
   await chunked(rows, 1000, (b: RelationshipRow[]) =>
     tx.sourceRelationship.createMany({ data: b.map((x) => ({ ...x, raw: json(x.raw), importJobId: jobId })) }));
 }
