@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handle, HttpError, requireSession, requireWriter } from "@/lib/auth/server";
 import { prisma } from "@/lib/db";
-import { draftComparison } from "@/lib/ai/ingest";
+import { draftComparison, identifiedDocument } from "@/lib/ai/ingest";
 import { comparisonSummary } from "@/lib/sources/headings";
+import { shortName } from "@/lib/frameworks";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,10 @@ export const GET = handle(async (_req: Request, ctx: { params: Promise<{ id: str
   do n++; while (used.has(String(n)));
   const { analysis, ...rest } = ing;
   const relationCounts = (analysis as { counts?: Record<string, number> } | null)?.counts ?? null;
-  return NextResponse.json({ ...rest, relationCounts, match, suggestedSourceId: String(n), comparison: cmp ? { base: cmp.base, summary: comparisonSummary(cmp.comparison) } : null });
+  // Uploaded for one document but identified as another: what it is, so the reviewer can switch to it.
+  const found = ing.status === "READY" ? await identifiedDocument(ing.detected) : null;
+  const identifiedAs = found ? { ...found, short: found.frameworkId ? shortName(found.name) : found.name, uploadedFor: match ? shortName(match.name) : null } : null;
+  return NextResponse.json({ ...rest, relationCounts, match, identifiedAs, suggestedSourceId: String(n), comparison: cmp ? { base: cmp.base, summary: comparisonSummary(cmp.comparison) } : null });
 });
 
 const CONTENT_TYPES = ["REQUIREMENT", "RECOMMENDATION", "GUIDANCE", "DEFINITION", "EXAMPLE", "REFERENCE", "SECTION"] as const;

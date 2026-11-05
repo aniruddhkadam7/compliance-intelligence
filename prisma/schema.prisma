@@ -632,3 +632,11 @@ model UpdateCheck {
 
   @@index([frameworkId, checkedAt])
 }
+
+/// Demonstration flow state (framework updates applied or rejected in Sources, control mappings approved in
+/// Change Analytics). One row per key; the rollback button resets it to the demo-ready state.
+model DemoState {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}

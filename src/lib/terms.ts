@@ -11,7 +11,7 @@ export const TERMS = {
   obligations: "Obligation Explorer",
   obligation: "Obligation",
   frameworkMapping: "Framework Matrix", // previously "Framework Mapping"
-  clientControls: "Client Control Mapping",
+  clientControls: "Custom Control Mapping", // previously "Client Control Mapping"
   versionImpact: "Change Analytics", // previously "Version Impact"
   data: "Data & Imports",
   updates: "Updates & Monitoring",

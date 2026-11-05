@@ -3,6 +3,7 @@ import { z } from "zod";
 import { handle, HttpError, requireWriter } from "@/lib/auth/server";
 import { prisma } from "@/lib/db";
 import { ensureConnectors } from "@/lib/connectors/registry";
+import { recordControlUpload } from "@/lib/demo/state";
 import { confirmImport, IMPORT_KINDS, sha256, type ImportKind } from "@/lib/ingest/persist";
 import { readUploadedWorkbook } from "@/lib/ingest/upload";
 
@@ -27,5 +28,7 @@ export const POST = handle(async (req: Request) => {
     throw new HttpError(422, "Import rejected: the workbook has blocking validation errors.", out.issues.filter((i) => i.severity === "ERROR").slice(0, 50));
   // Monitoring connectors are linked to documents by family/version; re-link after the library changes.
   if (job.kind === "LIBRARY") await ensureConnectors();
+  // Newly uploaded controls point to the version each demo framework is on now.
+  if (job.kind === "CLIENT_CONTROLS") await recordControlUpload();
   return NextResponse.json({ jobId: out.jobId, status: out.status, kind: job.kind, counts: out.counts });
 });

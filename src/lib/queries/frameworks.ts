@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { shortName } from "@/lib/frameworks";
 import { previousVersionOf, versionOf } from "@/lib/sources/previous-versions";
+import { uninstalledVersions } from "@/lib/demo/state";
 
 export const FrameworkFilters = z.object({
   q: z.string().trim().max(200).optional().default(""),
@@ -23,8 +24,11 @@ function sourceDate(details: unknown): Date | null {
 
 /** Full repository list (small enough to return in one response). */
 export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
+  // Framework versions whose update has not been applied in Sources are not in the repository yet.
+  const notInstalled = await uninstalledVersions();
   const rows = await prisma.framework.findMany({
     where: {
+      id: { notIn: notInstalled },
       ...(f.type && { type: f.type }),
       ...(f.jurisdiction && { jurisdiction: f.jurisdiction }),
       ...(f.group && { group: f.group }),
@@ -45,7 +49,7 @@ export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
   });
 
   // Version lifecycle across the whole library (not only the filtered rows): newest version of a family is current.
-  const all = await prisma.framework.findMany({ select: { id: true, family: true, versionLabel: true } });
+  const all = await prisma.framework.findMany({ where: { id: { notIn: notInstalled } }, select: { id: true, family: true, versionLabel: true } });
   const newest = new Map<string, { id: string; version: string | null }>();
   for (const f of all) {
     if (!f.family) continue;

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -22,7 +22,21 @@ export function UpdateCentre() {
   const [s, set] = useUrlState({ update: "", status: "NEW", connector: "", type: "", history: "" });
   const [running, setRunning] = useState<string[]>([]);
   const connectors = useQuery({ queryKey: ["connectors"], queryFn: () => apiGet<{ items: ConnectorRow[] }>("/api/connectors") });
-  const items = connectors.data?.items ?? [];
+  const items = useMemo(() => connectors.data?.items ?? [], [connectors.data]);
+  // One entry per framework: a document watch on the same framework (e.g. the CSF PDF) is shown under its main
+  // connector, which carries the combined status. Every connector still runs and raises its own updates.
+  const { main, also } = useMemo(() => {
+    const groups = new Map<string, ConnectorRow[]>();
+    for (const c of items) groups.set(c.framework?.id ?? c.id, [...(groups.get(c.framework?.id ?? c.id) ?? []), c]);
+    const also: Record<string, ConnectorRow[]> = {};
+    const main = [...groups.values()].map((g) => {
+      const [first, ...rest] = [...g].sort((a, b) => Number(a.mechanism === "HTTP_FINGERPRINT") - Number(b.mechanism === "HTTP_FINGERPRINT"));
+      also[first.id] = rest;
+      const failing = g.find((c) => c.lastStatus === "ERROR");
+      return { ...first, openUpdates: g.reduce((n, c) => n + c.openUpdates, 0), ...(failing ? { lastStatus: "ERROR", lastError: failing.lastError } : {}) };
+    });
+    return { main, also };
+  }, [items]);
 
   async function check(ids: string[]) {
     setRunning((r) => [...r, ...ids]);
@@ -56,6 +70,14 @@ export function UpdateCentre() {
     }
   }
 
+  // "N to review" on a connector: show its open findings in the Update centre below.
+  function reviewFindings(id: string) {
+    // A grouped entry also carries its document watch's findings; filter to the one connector that has them, or show all.
+    const withOpen = [id, ...(also[id] ?? []).map((c) => c.id)].filter((x) => (items.find((c) => c.id === x)?.openUpdates ?? 0) > 0);
+    set({ connector: withOpen.length === 1 ? withOpen[0] : "", status: "NEW", update: "" });
+    setTimeout(() => document.getElementById("update-centre")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
   const lastSync = items.map((c) => c.lastSuccessAt).filter(Boolean).sort().pop();
   const errors = items.filter((c) => c.lastStatus === "ERROR").length;
 
@@ -78,13 +100,13 @@ export function UpdateCentre() {
       <StatStrip
         className="mb-4 xl:grid-cols-4"
         items={[
-          { label: "Connectors", value: items.length, sub: `${items.filter((c) => c.enabled).length} enabled` },
+          { label: "Connectors", value: main.length, sub: `${main.filter((c) => c.enabled).length} enabled` },
           { label: "Updates to review", value: items.reduce((n, c) => n + c.openUpdates, 0), tone: "warning" },
           { label: "Connector errors", value: errors, tone: errors ? "warning" : "success", sub: errors ? "See status column" : "All healthy" },
           { label: "Last successful sync", value: <span className="text-[15px]">{formatRelative(lastSync)}</span>, sub: "Sources are monitored automatically" },
         ]}
       />
-      <ConnectorTable items={items} loading={connectors.isLoading} error={connectors.error} running={running} canWrite={canWrite} onCheck={(id) => check([id])} onSync={sync} onHistory={(id) => set({ history: id })} />
+      <ConnectorTable items={main} also={also} loading={connectors.isLoading} error={connectors.error} running={running} canWrite={canWrite} onCheck={(id) => check([id, ...(also[id] ?? []).map((c) => c.id)])} onSync={(id) => Promise.all([id, ...(also[id] ?? []).map((c) => c.id)].map(sync)).then(() => undefined)} onHistory={(id) => set({ history: id })} onReview={reviewFindings} />
       <div className="my-3 flex items-start gap-2 text-[11px] text-muted">
         <Info className="mt-px size-3 shrink-0" />
         <span>
@@ -92,6 +114,7 @@ export function UpdateCentre() {
           <b className="text-fg-2"> New publication</b>: a related document such as an amending act or a successor release. <b className="text-fg-2">New informative reference</b>: a new OLIR/crosswalk publication.
         </span>
       </div>
+      <div id="update-centre" className="scroll-mt-4" />
       <UpdatesList
         canWrite={canWrite}
         connectors={items}

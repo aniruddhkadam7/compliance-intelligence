@@ -1,16 +1,22 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, BellRing, Check, Grid3x3, ListChecks } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { ArrowRight, BellRing, Check, CheckCircle2, ClipboardCheck, FileSpreadsheet, GitCompareArrows, Grid3x3, Link2, ListChecks, Search, ShieldCheck, Upload, X } from "lucide-react";
 import { EmptyState, ErrorState, Mono, Page, PageHeader, StatStrip } from "@/components/common";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Sheet } from "@/components/ui/sheet";
+import { CitationDetailSheet } from "@/components/citations/citation-detail";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiGet } from "@/lib/client/api";
-import { useUrlState } from "@/lib/client/hooks";
+import { useProgressSteps, type ProgressStep } from "@/components/progress-steps";
+import { apiGet, apiSend } from "@/lib/client/api";
+import { useDebounced, useUrlState } from "@/lib/client/hooks";
+import { useMe } from "@/lib/client/use-me";
 import { TERMS } from "@/lib/terms";
 import { cn, formatNumber } from "@/lib/utils";
 
@@ -26,57 +32,192 @@ export const KIND: Record<Kind, { label: string; tone: Tone; color: string }> = 
   REMOVED: { label: "Removed", tone: "danger", color: "#d1293d" },
 };
 
-interface Summary {
+interface Flow { status: "AVAILABLE" | "UPDATED" | "REJECTED"; uploadedAfter: boolean; approved: string[] }
+interface Summary extends Flow {
   key: string; family: string; previous: string; current: string;
   changedTestProcedures: number; totalTestProcedures: number; affectedControls: number; totalControls: number;
 }
-interface Sec { doc: string; identifier: string; title: string }
+interface Sec { id: string; doc: string; identifier: string; title: string }
 interface Tp { id: string; text: string; removed: Sec[]; added: Sec[] }
 interface Detail extends Summary {
   removedSections: number; addedSections: number;
   controls: { controlName: string; title: string | null; totalTestProcedures: number; changed: Tp[] }[];
   families: { family: string; affected: number; total: number }[];
 }
+type Set_ = (p: Record<string, string>) => void;
 
 const label = (u: Summary) => `${u.family}: ${u.previous} → ${u.current}`;
+/** Approval is open once the update is applied in Sources, for controls uploaded before it. */
+const approving = (u: Flow) => u.status === "UPDATED" && !u.uploadedAfter;
+const pendingOf = (u: Summary) => (approving(u) ? u.affectedControls - u.approved.length : 0);
+const hintOf = (u: Summary) =>
+  u.status === "AVAILABLE" ? "Update not applied yet" : u.status === "REJECTED" ? "Update rejected" : u.uploadedAfter ? "Mapped to the new version"
+    : pendingOf(u) ? `${pendingOf(u)} awaiting approval` : "All approved";
 const TABS = (d: Detail) => [["controls", `Affected controls (${d.controls.length})`], ["procedures", `Changed test procedures (${d.changedTestProcedures})`], ["analytics", "Analytics"]] as const;
 
+const APPROVE_STEPS = (d: Detail, names: string[]): ProgressStep[] => {
+  const tps = d.controls.filter((c) => names.includes(c.controlName)).reduce((n, c) => n + c.changed.length, 0);
+  return [
+    { icon: ClipboardCheck, title: "Reading test procedures", detail: `${formatNumber(tps)} changed test procedure${tps === 1 ? "" : "s"} across ${names.length} control${names.length === 1 ? "" : "s"}` },
+    { icon: GitCompareArrows, title: `Matching to ${d.family} ${d.current}`, detail: "Each procedure matched to the sections of the new version" },
+    { icon: Link2, title: "Re-mapping controls", detail: `${d.family} ${d.previous} links retired, ${d.current} links recorded` },
+    { icon: ShieldCheck, title: "Mapping complete", detail: `${names.length === 1 ? names[0] : `${names.length} controls`} now point${names.length === 1 ? "s" : ""} to ${d.family} ${d.current}` },
+  ];
+};
+
 /**
- * Change Analytics: for a framework update (ISO 27701, ISO 27001, ISO 27002, NIST CSF, CIS Controls), which client test
- * procedures map to different sections in the updated version, and so which client controls are affected.
+ * Change Analytics: for a framework update (NIST CSF, CIS Controls, ISO/IEC 27001, ISO/IEC 27002), which client test
+ * procedures map to different sections in the updated version, which client controls are affected, and approval of
+ * their move to the new version once the update is applied in Sources.
  */
 export function ChangeAnalytics() {
-  const [s, set] = useUrlState({ update: "", tab: "controls", control: "" });
-  const list = useQuery({ queryKey: ["change-analytics", "reference"], queryFn: () => apiGet<Summary[]>("/api/change-analytics/reference") });
-  const selected = list.data?.find((u) => u.key === s.update)?.key ?? list.data?.[0]?.key ?? "";
-  const detail = useQuery({ queryKey: ["change-analytics", "reference", selected], queryFn: () => apiGet<Detail>(`/api/change-analytics/reference?key=${selected}`), enabled: !!selected });
+  const [s, set] = useUrlState({ update: "", tab: "controls", control: "", q: "", status: "", family: "" });
+  const list = useQuery({ queryKey: ["change-analytics", "reference"], queryFn: () => apiGet<{ controlsUploaded: number; updates: Summary[] }>("/api/change-analytics/reference") });
+  // Only updates applied in Sources are analysed; ones still on offer or rejected are not shown.
+  const updates = (list.data?.updates ?? []).filter((u) => u.status === "UPDATED");
+  const selected = updates.find((u) => u.key === s.update)?.key ?? updates.find((u) => pendingOf(u) > 0)?.key ?? updates[0]?.key ?? "";
+  const ready = !!list.data?.controlsUploaded && updates.length > 0;
+  const detail = useQuery({ queryKey: ["change-analytics", "reference", selected], queryFn: () => apiGet<Detail>(`/api/change-analytics/reference?key=${selected}`), enabled: !!selected && ready });
 
   return (
     <Page>
-      <PageHeader title={TERMS.versionImpact} description="What changed between a framework's previous version and its updated version, and which client controls are affected. Each client test procedure is compared by the sections it maps to in each version." />
+      <PageHeader title={TERMS.versionImpact} description="What changed between a framework's previous version and its updated version, which client controls are affected, and approval of their mapping to the new version." />
       {list.isLoading && <Skeleton className="h-60" />}
       {!!list.error && <Card><ErrorState error={list.error} onRetry={list.refetch} /></Card>}
-      {list.data && (
+      {list.data && !list.data.controlsUploaded && (
+        <Card>
+          <EmptyState
+            icon={FileSpreadsheet}
+            title="No client controls uploaded"
+            description="Change Analytics shows how framework updates affect the client's controls. Upload the client's control workbook to begin."
+            action={<Button asChild variant="primary"><Link href="/data?tab=import"><Upload /> Go to {TERMS.data}</Link></Button>}
+          />
+        </Card>
+      )}
+      {list.data && !!list.data.controlsUploaded && !updates.length && (
+        <Card>
+          <EmptyState
+            icon={GitCompareArrows}
+            title="No framework updates applied yet"
+            description="Once a framework update is applied in Sources, the client controls it affects are listed here for approval."
+            action={<Button asChild variant="primary"><Link href="/sources">Go to {TERMS.sources} <ArrowRight /></Link></Button>}
+          />
+        </Card>
+      )}
+      {list.data && ready && (
         <div className="space-y-4">
           <Card className="flex flex-wrap items-center gap-3 p-3">
             <span className="text-xs text-muted">Framework update</span>
             <Select
-              value={selected} onChange={(v) => set({ update: v, control: "" })} aria-label="Framework update" triggerClassName="min-w-[320px]"
-              options={list.data.map((u) => ({ value: u.key, label: label(u), hint: `${u.affectedControls} controls affected` }))}
+              value={selected} onChange={(v) => set({ update: v, control: "", q: "", status: "", family: "" })} aria-label="Framework update" triggerClassName="min-w-[320px]"
+              options={updates.map((u) => ({ value: u.key, label: label(u), hint: hintOf(u) }))}
             />
           </Card>
           {detail.isLoading && <Skeleton className="h-80" />}
           {!!detail.error && <Card><ErrorState error={detail.error} onRetry={detail.refetch} /></Card>}
-          {detail.data && <UpdateView d={detail.data} tab={s.tab} control={s.control} set={set} />}
+          {detail.data && <UpdateView d={detail.data} tab={s.tab} control={s.control} filters={{ q: s.q, status: s.status, family: s.family }} set={set} />}
         </div>
       )}
     </Page>
   );
 }
 
-function UpdateView({ d, tab, control, set }: { d: Detail; tab: string; control: string; set: (p: Record<string, string>) => void }) {
+/** Approves controls' move to the new version, with the mapping animation. */
+function useApprove(d: Detail) {
+  const qc = useQueryClient();
+  const progress = useProgressSteps();
+  const approve = async (names: string[]) => {
+    if (!names.length) return;
+    try {
+      await progress.run(`Approving ${names.length === 1 ? names[0] : `${names.length} controls`}`, APPROVE_STEPS(d, names), () => apiSend("/api/demo", { action: "approve", key: d.key, controls: names }),
+        names.length > 14 ? [...names.slice(0, 13), `+${names.length - 13} more`] : names);
+      toast.success(`${names.length === 1 ? names[0] : `${names.length} controls`} mapped to ${d.family} ${d.current}`);
+      await qc.invalidateQueries();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Approval failed");
+    }
+  };
+  return { approve, overlay: progress.overlay, running: progress.running };
+}
+
+function FlowBanner({ d, onApproveAll, running }: { d: Detail; onApproveAll: () => void; running: boolean }) {
+  const canWrite = !!useMe().data?.canWrite;
+  const pending = pendingOf(d);
+  const box = (tone: "warning" | "success" | "neutral", icon: React.ReactNode, body: React.ReactNode, action?: React.ReactNode) => (
+    <Card className={cn(tone === "warning" && "border-warning/50 bg-warning-soft/30", tone === "success" && "border-success/40 bg-success-soft/40")}>
+      <CardBody className="flex flex-wrap items-center gap-3 text-[13px]">{icon}<span className="min-w-0 flex-1">{body}</span>{action}</CardBody>
+    </Card>
+  );
+  if (d.status === "AVAILABLE")
+    return box("warning", <BellRing className="size-4 text-warning" />,
+      <><b>Update available: {d.family} {d.current}.</b> The client&apos;s controls stay on {d.previous} until the update is applied in Sources; their mappings can then be approved here.</>,
+      <Button asChild size="sm" variant="primary"><Link href="/sources?status=AVAILABLE">Go to Sources <ArrowRight /></Link></Button>);
+  if (d.status === "REJECTED")
+    return box("neutral", <X className="size-4 text-muted" />, <><b>Update rejected in Sources.</b> The client&apos;s controls stay on {d.family} {d.previous}.</>);
+  if (d.uploadedAfter)
+    return box("success", <CheckCircle2 className="size-4 text-success" />, <><b>Controls map to {d.family} {d.current}.</b> They were uploaded after the update was applied, so there is nothing to approve.</>);
+  if (!pending)
+    return box("success", <CheckCircle2 className="size-4 text-success" />, <><b>All {formatNumber(d.affectedControls)} affected controls approved.</b> They now point to {d.family} {d.current}.</>);
+  return box("warning", <BellRing className="size-4 text-warning" />,
+    <><b>{formatNumber(pending)} of {formatNumber(d.affectedControls)} affected controls await approval.</b> Approved controls move to {d.family} {d.current}; the rest stay on {d.previous}.</>,
+    canWrite && <Button size="sm" variant="primary" disabled={running} onClick={onApproveAll}><Check /> Approve all ({formatNumber(pending)})</Button>);
+}
+
+interface Filters { q: string; status: string; family: string }
+const familyOfControl = (name: string) => name.split("-")[0];
+
+/** Filters for the controls and test procedures: search, approval status and control family. */
+function FilterBar({ d, f, set, shown }: { d: Detail; f: Filters; set: Set_; shown: number }) {
+  const [q, setQ] = useState(f.q);
+  const dq = useDebounced(q, 300);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (dq !== f.q) set({ q: dq, control: "" }); }, [dq]);
+  useEffect(() => { setQ(f.q); }, [f.q]);
+  const families = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of d.controls) m.set(familyOfControl(c.controlName), (m.get(familyOfControl(c.controlName)) ?? 0) + 1);
+    return [...m].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  }, [d.controls]);
+  const active = !!(f.q || f.status || f.family);
+  return (
+    <Card className="flex flex-wrap items-center gap-2 p-3">
+      <div className="relative min-w-[240px] flex-1">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search control, title or section (e.g. ID.AM-03)…" className="pl-8" aria-label="Search controls and sections" />
+      </div>
+      <Select
+        value={f.status} onChange={(v) => set({ status: v, control: "" })} allLabel="Any approval status" aria-label="Approval status"
+        options={[{ value: "awaiting", label: "Awaiting approval" }, { value: "approved", label: "Approved" }]}
+      />
+      <Select
+        value={f.family} onChange={(v) => set({ family: v, control: "" })} allLabel="All control families" aria-label="Control family"
+        options={families.map(([value, n]) => ({ value, label: value, hint: n }))}
+      />
+      {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", status: "", family: "", control: "" }); }}><X /> Clear</Button>}
+      <span className="ml-auto text-xs tabular text-muted">{shown} of {d.controls.length} affected controls</span>
+    </Card>
+  );
+}
+
+function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: string; control: string; filters: Filters; set: Set_ }) {
+  // Controls matching the filters; everything below works on this view.
+  const d = useMemo<Detail>(() => {
+    const done = new Set(full.approved);
+    const all = full.status === "UPDATED" && full.uploadedAfter;
+    const q = filters.q.trim().toLowerCase();
+    const controls = full.controls.filter((c) =>
+      (!filters.family || familyOfControl(c.controlName) === filters.family) &&
+      (!filters.status || (filters.status === "approved") === (all || done.has(c.controlName))) &&
+      (!q || `${c.controlName} ${c.title ?? ""}`.toLowerCase().includes(q) ||
+        c.changed.some((t) => [...t.added, ...t.removed].some((x) => `${x.identifier} ${x.title}`.toLowerCase().includes(q)))));
+    return { ...full, controls, changedTestProcedures: controls.reduce((n, c) => n + c.changed.length, 0) };
+  }, [full, filters.q, filters.status, filters.family]);
+  const filtered = !!(filters.q || filters.status || filters.family);
+  const { approve, overlay, running } = useApprove(d);
+  const approved = new Set(d.approved);
   return (
     <>
+      {overlay}
       <Card>
         <CardBody className="flex flex-wrap items-center gap-x-10 gap-y-3">
           <div>
@@ -88,90 +229,193 @@ function UpdateView({ d, tab, control, set }: { d: Detail; tab: string; control:
             </div>
           </div>
           <div><div className={cn("text-2xl font-semibold tabular", d.affectedControls ? "text-warning" : "text-fg")}>{d.affectedControls}</div><div className="text-[11px] text-muted">Affected client controls</div></div>
+          {approving(d) && <div><div className="text-2xl font-semibold tabular text-success">{d.approved.length}</div><div className="text-[11px] text-muted">Approved</div></div>}
           <div><div className="text-2xl font-semibold tabular text-fg">{d.totalControls}</div><div className="text-[11px] text-muted">Total client controls</div></div>
         </CardBody>
       </Card>
 
-      <Card className={d.affectedControls ? "border-warning/50 bg-warning-soft/30" : undefined}>
-        <CardBody className="flex flex-wrap items-center gap-3 text-[13px]">
-          {d.affectedControls ? <BellRing className="size-4 text-warning" /> : <Check className="size-4 text-success" />}
-          <span className="flex-1">
-            {d.affectedControls
-              ? <><b>{formatNumber(d.affectedControls)} of {formatNumber(d.totalControls)} client controls are affected.</b> {formatNumber(d.changedTestProcedures)} of their test procedures map to different sections in {d.family} {d.current}.</>
-              : <><b>No client control is affected.</b> Every test procedure maps to the same sections in both versions.</>}
-          </span>
-          {d.affectedControls > 0 && tab !== "controls" && <Button size="sm" variant="primary" onClick={() => set({ tab: "controls" })}>Review affected controls</Button>}
-        </CardBody>
-      </Card>
+      <FlowBanner d={d} running={running} onApproveAll={() => approve(d.controls.map((c) => c.controlName).filter((n) => !approved.has(n)))} />
 
       <StatStrip
         className="xl:grid-cols-5"
         items={[
           { label: "Affected controls", value: d.affectedControls, tone: d.affectedControls ? "warning" : "default", sub: `of ${formatNumber(d.totalControls)} client controls` },
-          { label: "Test procedures changed", value: d.changedTestProcedures, tone: d.changedTestProcedures ? "warning" : "default", sub: `of ${formatNumber(d.totalTestProcedures)}` },
-          { label: "Test procedures unchanged", value: d.totalTestProcedures - d.changedTestProcedures, tone: "success", sub: "Same sections in both versions" },
+          { label: "Test procedures changed", value: full.changedTestProcedures, tone: full.changedTestProcedures ? "warning" : "default", sub: `of ${formatNumber(d.totalTestProcedures)}` },
+          { label: "Test procedures unchanged", value: d.totalTestProcedures - full.changedTestProcedures, tone: "success", sub: "Same sections in both versions" },
           { label: "Sections removed from mappings", value: d.removedSections, hint: "Distinct sections of the previous version that changed test procedures no longer map to" },
           { label: "Sections added to mappings", value: d.addedSections, hint: "Distinct sections of the updated version that changed test procedures now map to" },
         ]}
       />
 
+      {tab !== "analytics" && <FilterBar d={full} f={filters} set={set} shown={d.controls.length} />}
       <div className="flex flex-wrap gap-1">
         {TABS(d).map(([id, text]) => (
           <button key={id} onClick={() => set({ tab: id })} className={cn("rounded-md border px-3 py-1.5 text-xs", tab === id ? "border-accent bg-accent-soft text-accent" : "border-border text-muted hover:text-fg")}>{text}</button>
         ))}
       </div>
-      {tab === "controls" && <AffectedControls d={d} selected={control} set={set} />}
+      {tab === "controls" && <AffectedControls d={d} selected={control} set={set} approve={approve} running={running} filtered={filtered} />}
       {tab === "procedures" && <ChangedProcedures d={d} set={set} />}
-      {tab === "analytics" && <Analytics d={d} />}
+      {tab === "analytics" && <Analytics d={full} />}
     </>
   );
 }
 
-/** Sections grouped by framework, as identifier chips (the title is on hover). */
-function Sections({ items, tone }: { items: Sec[]; tone: "removed" | "added" }) {
-  if (!items.length) return <span className="text-subtle">None</span>;
-  const byDoc = new Map<string, Sec[]>();
-  for (const s of items) byDoc.set(s.doc, [...(byDoc.get(s.doc) ?? []), s]);
+/** The sections of the framework being updated; mappings to other frameworks are listed apart from them. */
+const inFamily = (d: Detail, s: Sec) => s.doc.startsWith(d.family);
+
+/** A list of sections: identifier, title and version, each one opening its detail panel. */
+function SectionList({ items, tone, onOpen }: { items: Sec[]; tone: "removed" | "added"; onOpen: (s: Sec) => void }) {
+  if (!items.length) return <span className="text-xs text-subtle">None</span>;
   return (
-    <div className="space-y-2">
-      {[...byDoc].map(([doc, list]) => (
-        <div key={doc}>
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-subtle">{doc || "Other"}</div>
-          <div className="flex flex-wrap gap-1">
-            {list.map((s) => (
-              <span key={s.identifier + s.title} title={s.title ? `${s.identifier}: ${s.title}` : s.identifier}
-                className={cn("rounded border px-1.5 py-0.5 font-mono text-[11px]", tone === "removed" ? "border-danger/30 bg-danger-soft/50 text-fg-2 line-through decoration-danger/40" : "border-info/30 bg-info-soft/60 text-fg")}>
-                {s.identifier}
-              </span>
-            ))}
-          </div>
-        </div>
+    <ul className="space-y-1">
+      {items.map((s) => (
+        <li key={s.id}>
+          <button
+            onClick={() => onOpen(s)} title="Open section details"
+            className={cn("flex w-full items-baseline gap-2 rounded border px-2 py-1 text-left text-xs transition-colors",
+              tone === "removed" ? "border-danger/25 bg-danger-soft/40 hover:bg-danger-soft/70" : "border-success/30 bg-success-soft/50 hover:bg-success-soft/80")}
+          >
+            <span className={cn("shrink-0 font-mono font-medium text-fg", tone === "removed" && "line-through decoration-danger/40")}>{s.identifier}</span>
+            <span className="line-clamp-1 min-w-0 flex-1 text-muted">{s.title}</span>
+          </button>
+        </li>
       ))}
+    </ul>
+  );
+}
+
+/** Removed or added sections of a test procedure: the updated framework first, other frameworks collapsed. */
+function MappingColumn({ d, items, tone, onOpen }: { d: Detail; items: Sec[]; tone: "removed" | "added"; onOpen: (s: Sec) => void }) {
+  const main = items.filter((s) => inFamily(d, s)), other = items.filter((s) => !inFamily(d, s));
+  const version = main[0]?.doc ?? `${d.family} ${tone === "removed" ? d.previous : d.current}`;
+  return (
+    <div className={cn("rounded border p-3 text-xs", tone === "removed" ? "border-border bg-surface-2" : "border-success/30 bg-success-soft/30")}>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">{tone === "removed" ? (d.uploadedAfter && d.status === "UPDATED" ? "Previously" : "Maps to now") : d.uploadedAfter && d.status === "UPDATED" ? "Maps to" : "Will map to"} · {version}</div>
+      <SectionList items={main} tone={tone} onOpen={onOpen} />
+      {other.length > 0 && (
+        <details className="mt-2 text-muted">
+          <summary className="cursor-pointer text-[11px] font-medium hover:text-fg">Also {tone === "removed" ? "mapped before" : "mapped after"} in other frameworks ({other.length})</summary>
+          <div className="mt-1.5"><SectionList items={other} tone={tone} onOpen={onOpen} /></div>
+        </details>
+      )}
     </div>
   );
 }
 
-/** Only the controls with a changed test procedure. Selecting one shows those procedures with what moved in their mapping. */
-function AffectedControls({ d, selected, set }: { d: Detail; selected: string; set: (p: Record<string, string>) => void }) {
-  const open = d.controls.find((c) => c.controlName === selected) ?? d.controls[0] ?? null;
-  if (!d.controls.length)
-    return <Card><EmptyState icon={ListChecks} title="No client controls are affected" description="No client test procedure maps to different sections in this version." /></Card>;
+/** One plain sentence on what changes for the control and what approving does. */
+function ControlSummary({ d, c }: { d: Detail; c: Detail["controls"][number] }) {
+  const added = [...new Map(c.changed.flatMap((t) => t.added).filter((s) => inFamily(d, s)).map((s) => [s.id, s])).values()];
+  const shown = added.slice(0, 4).map((s) => s.identifier).join(", ");
+  if (d.uploadedAfter)
+    return <><b className="text-fg-2">{c.controlName}</b> was uploaded after {d.family} {d.current} was installed, so it already maps to {d.family} {d.current}{shown ? ` (${shown}${added.length > 4 ? ` and ${added.length - 4} more` : ""})` : ""}. Nothing to approve. The sections below show what changed from {d.previous} for reference.</>;
   return (
-    <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+    <>
+      <b className="text-fg-2">{c.controlName}</b> has {c.totalTestProcedures} test procedure{c.totalTestProcedures === 1 ? "" : "s"}; {c.changed.length} map{c.changed.length === 1 ? "s" : ""} to different sections in {d.family} {d.current}.{" "}
+      {added.length ? <>Approving moves {c.changed.length === 1 ? "it" : "them"} from {d.family} {d.previous} to {d.family} {d.current} ({shown}{added.length > 4 ? ` and ${added.length - 4} more` : ""}). The test procedures themselves stay the same.</>
+        : <>Only its mappings to other frameworks changed; approving records the move to {d.family} {d.current}.</>}
+    </>
+  );
+}
+
+type Panel = { kind: "section"; id: string } | { kind: "tp"; control: string; tp: Tp } | null;
+
+/** Right-hand panel for one test procedure: its full text and everything that moves in its mapping. */
+function ProcedurePanel({ d, panel, onClose, onSection }: { d: Detail; panel: Extract<Panel, { kind: "tp" }> | null; onClose: () => void; onSection: (s: Sec) => void }) {
+  const tp = panel?.tp;
+  const group = (items: Sec[]) => {
+    const by = new Map<string, Sec[]>();
+    for (const s of items) by.set(s.doc || "Other", [...(by.get(s.doc || "Other") ?? []), s]);
+    return [...by].sort((a, b) => Number(b[0].startsWith(d.family)) - Number(a[0].startsWith(d.family)));
+  };
+  return (
+    <Sheet
+      open={!!panel} onOpenChange={(o) => !o && onClose()}
+      title={tp ? <span className="font-mono">{tp.id}</span> : "Test procedure"}
+      description={panel ? `Control ${panel.control} · ${d.family} ${d.previous} → ${d.current}` : undefined}
+    >
+      {tp && (
+        <div className="space-y-5 p-5">
+          <section>
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Test procedure</div>
+            <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-fg">{tp.text || "No description recorded."}</p>
+            <p className="mt-2 text-xs text-muted">The procedure does not change. Only the framework sections it maps to do.</p>
+          </section>
+          {([["removed", "Maps to now (removed)", tp.removed], ["added", "Will map to (added)", tp.added]] as const).map(([tone, label, items]) => (
+            <section key={tone}>
+              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">{label} · {items.length}</div>
+              {group(items).map(([doc, list]) => (
+                <div key={doc} className="mb-3">
+                  <div className="mb-1 text-[11px] font-medium text-fg-2">{doc}</div>
+                  <SectionList items={list} tone={tone} onOpen={onSection} />
+                </div>
+              ))}
+              {!items.length && <span className="text-xs text-subtle">None</span>}
+            </section>
+          ))}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+/**
+ * Only the controls with a changed test procedure. Selecting one shows those procedures with what moved in their
+ * mapping; a procedure or a section opens a detail panel on the right. Once the update is applied, each control can be
+ * approved on its own or several at once.
+ */
+function AffectedControls({ d, selected, set, approve, running, filtered }: { d: Detail; selected: string; set: Set_; approve: (names: string[]) => Promise<void>; running: boolean; filtered: boolean }) {
+  const canWrite = !!useMe().data?.canWrite;
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [panel, setPanel] = useState<Panel>(null);
+  const open = d.controls.find((c) => c.controlName === selected) ?? d.controls[0] ?? null;
+  const approved = new Set(d.approved);
+  const mode = approving(d) && canWrite;
+  const open_ = d.controls.filter((c) => !approved.has(c.controlName)).map((c) => c.controlName);
+  const toggle = (n: string) => setPicked((x) => { const y = new Set(x); if (y.has(n)) y.delete(n); else y.add(n); return y; });
+  const run = async (names: string[]) => { await approve(names); setPicked(new Set()); };
+  const openSection = (s: Sec) => setPanel({ kind: "section", id: s.id });
+  if (!d.controls.length)
+    return filtered
+      ? <Card><EmptyState icon={Search} title="No controls match" description="Change or clear the filters." /></Card>
+      : <Card><EmptyState icon={ListChecks} title="No client controls are affected" description="No client test procedure maps to different sections in this version." /></Card>;
+  const disabledWhy = d.status !== "UPDATED" ? "Apply the update in Sources first" : d.uploadedAfter ? "Already mapped to the new version" : !canWrite ? "Your role cannot approve mappings" : undefined;
+  return (
+    <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
+      <CitationDetailSheet citationId={panel?.kind === "section" ? panel.id : null} onClose={() => setPanel(null)} onOpen={(id) => setPanel({ kind: "section", id })} />
+      <ProcedurePanel d={d} panel={panel?.kind === "tp" ? panel : null} onClose={() => setPanel(null)} onSection={openSection} />
       <Card className="self-start">
-        <CardHeader title={`Affected controls (${d.controls.length} of ${d.totalControls})`} description="Select a control to see what changed" />
+        <CardHeader
+          title={`Affected controls (${d.controls.length} of ${filtered ? d.affectedControls : d.totalControls})`}
+          description={mode ? "Select controls to approve, or approve one at a time" : "Select a control to see what changed"}
+          actions={mode && open_.length > 0 && (
+            <Button size="sm" variant="primary" disabled={running || !picked.size} onClick={() => run([...picked])}><Check /> Approve{picked.size ? ` (${picked.size})` : ""}</Button>
+          )}
+        />
+        {mode && open_.length > 0 && (
+          <label className="flex items-center gap-2 border-b border-border bg-surface-2 px-4 py-2 text-xs text-muted">
+            <input type="checkbox" className="size-4 accent-[#2e2e38]" checked={open_.every((n) => picked.has(n))} onChange={(e) => setPicked(e.target.checked ? new Set(open_) : new Set())} />
+            Select all awaiting approval ({open_.length})
+          </label>
+        )}
         <ul className="max-h-[640px] divide-y divide-border overflow-auto">
-          {d.controls.map((c) => (
-            <li key={c.controlName}>
-              <button onClick={() => set({ control: c.controlName })} className={cn("flex w-full items-start gap-2 px-4 py-2.5 text-left text-xs hover:bg-surface-2", open?.controlName === c.controlName && "bg-accent-soft/50")}>
-                <div className="min-w-0 flex-1">
+          {d.controls.map((c) => {
+            const ok = approved.has(c.controlName) || (d.status === "UPDATED" && d.uploadedAfter);
+            return (
+              <li key={c.controlName} className={cn("flex items-start gap-2 px-4 py-2.5 text-xs", open?.controlName === c.controlName && "bg-accent-soft/50", ok && approving(d) && "bg-success-soft/40")}>
+                {mode && (ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" /> : (
+                  <input type="checkbox" aria-label={`Select ${c.controlName}`} className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[#2e2e38]" checked={picked.has(c.controlName)} onChange={() => toggle(c.controlName)} />
+                ))}
+                <button onClick={() => set({ control: c.controlName })} className="min-w-0 flex-1 text-left">
                   <div className="font-mono font-medium text-fg">{c.controlName}</div>
                   {c.title && <div className="line-clamp-2 text-muted">{c.title}</div>}
-                </div>
-                <Badge tone="warning">{c.changed.length} of {c.totalTestProcedures}</Badge>
-              </button>
-            </li>
-          ))}
+                  <div className="mt-1"><Badge tone={ok && approving(d) ? "success" : d.uploadedAfter ? "neutral" : "warning"}>{c.changed.length} of {c.totalTestProcedures} changed{d.status === "UPDATED" && d.uploadedAfter ? " · mapped on upload" : ""}</Badge></div>
+                </button>
+                {mode && (ok ? <Badge tone="success"><Check /> Approved</Badge> : (
+                  <Button size="sm" disabled={running} onClick={() => run([c.controlName])}>Approve</Button>
+                ))}
+              </li>
+            );
+          })}
         </ul>
       </Card>
       {open && (
@@ -179,27 +423,29 @@ function AffectedControls({ d, selected, set }: { d: Detail; selected: string; s
           <CardHeader
             title={<span className="font-mono">{open.controlName}</span>}
             description={open.title ?? undefined}
-            actions={<Button asChild size="sm" variant="ghost"><Link href={`/controls/${encodeURIComponent(open.controlName)}`}>Open control <ArrowRight /></Link></Button>}
+            actions={d.status === "UPDATED" && d.uploadedAfter ? (
+              <Badge tone="success"><Check /> Mapped to {d.family} {d.current} on upload</Badge>
+            ) : approved.has(open.controlName) ? (
+              <span className="flex items-center gap-2">
+                <Badge tone="success"><Check /> Approved · {d.family} {d.current}</Badge>
+                <Button asChild size="sm" variant="ghost"><Link href={`/controls/${encodeURIComponent(open.controlName)}`}>View control <ArrowRight /></Link></Button>
+              </span>
+            ) : (
+              <Button size="sm" variant="primary" disabled={running || !!disabledWhy} title={disabledWhy} onClick={() => run([open.controlName])}><Check /> Approve and move to {d.family} {d.current}</Button>
+            )}
           />
-          <div className="border-b border-border bg-surface-2 px-4 py-2 text-xs text-muted">
-            {open.changed.length} of {open.totalTestProcedures} test procedure{open.totalTestProcedures === 1 ? "" : "s"} map to different sections in {d.family} {d.current}. The rest map to the same sections in both versions.
-          </div>
+          <div className="border-b border-border bg-surface-2 px-4 py-2.5 text-xs leading-relaxed text-muted"><ControlSummary d={d} c={open} /></div>
           <div className="divide-y divide-border">
             {open.changed.map((tp) => (
               <div key={tp.id} className="p-4">
-                <div className="mb-2 flex items-start gap-2">
+                <button onClick={() => setPanel({ kind: "tp", control: open.controlName, tp })} title="Open test procedure details" className="mb-2 flex w-full items-start gap-2 rounded text-left hover:bg-surface-2">
                   <Mono className="whitespace-nowrap text-xs font-medium text-fg">{tp.id}</Mono>
-                  <p className="line-clamp-3 text-xs text-muted" title={tp.text}>{tp.text}</p>
-                </div>
+                  <p className="line-clamp-3 flex-1 text-xs text-muted">{tp.text}</p>
+                  <ArrowRight className="mt-0.5 size-3.5 shrink-0 text-subtle" />
+                </button>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded border border-border bg-surface-2 p-3 text-xs">
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Previous mapping · removed ({tp.removed.length})</div>
-                    <Sections items={tp.removed} tone="removed" />
-                  </div>
-                  <div className="rounded border border-accent/30 bg-accent-soft/30 p-3 text-xs">
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Updated mapping · added ({tp.added.length})</div>
-                    <Sections items={tp.added} tone="added" />
-                  </div>
+                  <MappingColumn d={d} items={tp.removed} tone="removed" onOpen={openSection} />
+                  <MappingColumn d={d} items={tp.added} tone="added" onOpen={openSection} />
                 </div>
               </div>
             ))}
@@ -213,7 +459,7 @@ function AffectedControls({ d, selected, set }: { d: Detail; selected: string; s
 const PAGE = 100;
 
 /** Every changed test procedure with its control. */
-function ChangedProcedures({ d, set }: { d: Detail; set: (p: Record<string, string>) => void }) {
+function ChangedProcedures({ d, set }: { d: Detail; set: Set_ }) {
   const [limit, setLimit] = useState(PAGE);
   const rows = d.controls.flatMap((c) => c.changed.map((tp) => ({ control: c.controlName, tp })));
   if (!rows.length) return <Card><EmptyState icon={ListChecks} title="No test procedures changed" description="Every test procedure maps to the same sections in both versions." /></Card>;
@@ -234,7 +480,7 @@ function ChangedProcedures({ d, set }: { d: Detail; set: (p: Record<string, stri
                 <td className="whitespace-nowrap px-3 py-2 font-mono text-fg-2">{tp.id}</td>
                 <td className="max-w-[460px] px-3 py-2 text-muted"><div className="line-clamp-2">{tp.text}</div></td>
                 <td className="px-3 py-2 text-right tabular text-danger">{tp.removed.length}</td>
-                <td className="px-4 py-2 text-right tabular text-info">{tp.added.length}</td>
+                <td className="px-4 py-2 text-right tabular text-success">{tp.added.length}</td>
               </tr>
             ))}
           </tbody>

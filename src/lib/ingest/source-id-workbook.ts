@@ -291,7 +291,7 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
     if (selSheet)
       issues.push({
         severity: "INFO", code: "CONTROL_REGISTER", sheet: ctlSheet_.name,
-        message: `All ${ds.controls.length} controls on “${ctlSheet_.name}” are imported and in scope; the ${selection.size} listed on “${selSheet.name}” are marked as the client's selection. The client can change the scope on Client Control Mapping.`,
+        message: `All ${ds.controls.length} controls on “${ctlSheet_.name}” are imported and in scope; the ${selection.size} listed on “${selSheet.name}” are marked as the client's selection. The client can change the scope on Custom Control Mapping.`,
       });
     if (outside.size)
       issues.push({

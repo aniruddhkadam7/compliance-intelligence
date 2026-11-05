@@ -17,6 +17,8 @@ export interface TraceNode {
   /** Handled by the caller (e.g. expand a collapsed group) instead of navigating. */
   action?: string;
   emphasis?: boolean;
+  /** Framework update state: "warning" (approval pending) or "success" (approved). */
+  tone?: "warning" | "success";
 }
 export interface TraceEdge {
   from: string;
@@ -40,13 +42,13 @@ function TraceNodeView({ data }: NodeProps<Node<FlowData>>) {
       className={cn(
         "w-[230px] rounded-md border bg-surface px-2.5 py-1.5 shadow-xs transition-colors",
         (data.href || data.action) && "cursor-pointer hover:border-accent",
-        data.emphasis ? "border-accent ring-2 ring-accent-soft" : "border-border",
+        data.emphasis ? "border-accent ring-2 ring-accent-soft" : data.tone === "warning" ? "border-warning bg-warning-soft" : data.tone === "success" ? "border-success bg-success-soft" : "border-border",
         data.kind === "more" && "border-dashed bg-surface-2",
       )}
     >
       <Handle type="source" position={Position.Right} className="!size-1.5 !border-0 !bg-border-strong" />
       <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-subtle">
-        <Icon className={cn("size-3", data.kind === "control" && "text-accent", data.kind === "framework" && "text-info")} />
+        <Icon className={cn("size-3", data.kind === "control" && "text-accent", data.kind === "framework" && (data.tone === "warning" ? "text-warning" : data.tone === "success" ? "text-success" : "text-fg-2"))} />
         {KIND_LABEL[data.kind]}
       </div>
       <div className="truncate text-[12px] font-medium text-fg" title={data.label}>{data.label}</div>

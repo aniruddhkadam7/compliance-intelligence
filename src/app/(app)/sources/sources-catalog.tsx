@@ -1,9 +1,12 @@
 "use client";
 import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, BellRing, BookOpenText, Check, ChevronRight, ExternalLink, Eye, Loader2, RefreshCw, Search, X } from "lucide-react";
+import { ArrowRight, BellRing, BookOpenText, Check, Download, ExternalLink, Globe, Library, Loader2, Plug, RefreshCw, ScanSearch, Search, X } from "lucide-react";
+import { MECHANISM_LABEL, type Mechanism } from "@/lib/connectors/types";
+import { useProgressSteps, type ProgressStep } from "@/components/progress-steps";
 import { EmptyState, Mono, Page, PageHeader, StatStrip } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Badge, Dot } from "@/components/ui/badge";
@@ -16,17 +19,16 @@ import { useUrlState } from "@/lib/client/hooks";
 import { APPLICABILITY_TAGS, BASIS_LABEL } from "@/lib/sources/applicability";
 import { CHECK_METHOD, UPDATE_CHECK } from "@/lib/updates/labels";
 import { TERMS } from "@/lib/terms";
-import { cn, formatDate, formatDateTime, formatNumber, formatRelative } from "@/lib/utils";
+import { cn, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
 import type { SourceRow } from "@/lib/queries/sources";
 import { VersionChanges } from "./version-changes";
 
-const DEFAULTS = { q: "", type: "", publisher: "", applicability: "", status: "", open: "" };
+const DEFAULTS = { q: "", type: "", publisher: "", applicability: "", status: "", source: "" };
 type Check = NonNullable<SourceRow["latestCheck"]>;
 
 const facet = (rows: SourceRow[], k: (r: SourceRow) => string | null) =>
   [...rows.reduce((m, r) => { const v = k(r); if (v) m.set(v, (m.get(v) ?? 0) + 1); return m; }, new Map<string, number>())]
     .sort((a, b) => a[0].localeCompare(b[0])).map(([value, n]) => ({ value, label: value, hint: n }));
-const statusOf = (d: SourceRow) => d.latestCheck?.status ?? "NOT_CHECKED";
 
 export function ApplicabilityChips({ a }: { a: SourceRow["applicability"] }) {
   if (!a.tags.length) return <span className="text-xs text-subtle">Not classified</span>;
@@ -116,50 +118,170 @@ export function useCheckForUpdates() {
   return { run, running };
 }
 
-export function SourcesCatalog({ docs, role }: { docs: SourceRow[]; role: Role }) {
+/** A framework update offered in the demonstration flow, with the library documents of both versions. */
+export interface DemoUpdate {
+  key: string; family: string; previous: string; current: string; published: string;
+  status: "AVAILABLE" | "UPDATED" | "REJECTED"; previousId: string | null; currentId: string | null;
+  /** Released to users by an admin (updates that need no release are always released). */
+  released: boolean;
+}
+
+/** An update a user can install from Sources: a demo framework update, or an uploaded version an admin released. */
+interface Offer { key: string; name: string; released: boolean; docId?: string; importId?: string }
+
+const STATUS_FILTERS = [{ value: "AVAILABLE", label: "Update available" }, { value: "UPDATED", label: "Updated" }];
+export const versionLabel = (family: string, v: string | null) => (v && family === "CIS Controls" && /^\d/.test(v) ? `v${v}` : v);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const UPDATE_STEPS = (names: string[]): ProgressStep[] => [
+  { icon: Globe, title: "Scanning publisher sources", detail: "Checking the NIST, CIS and ISO official sites for new releases" },
+  { icon: Download, title: "Downloading new versions", detail: `${names.length} official document${names.length === 1 ? "" : "s"} retrieved from the publishers` },
+  { icon: ScanSearch, title: "Extracting and verifying", detail: "Sections, identifiers and requirement text checked against the official document" },
+  { icon: Library, title: "Updating the library", detail: "New versions installed; previous versions kept for client mappings" },
+];
+
+/**
+ * Sources: every framework and document in the library with its current and latest version. Updates are applied
+ * by selecting frameworks and choosing Update (or Reject to decline them).
+ */
+export function SourcesCatalog({ docs, demo, role }: { docs: SourceRow[]; demo: DemoUpdate[]; role: Role }) {
+  const router = useRouter();
+  const qc = useQueryClient();
   const [s, set] = useUrlState(DEFAULTS);
-  const { run, running } = useCheckForUpdates();
-  // One row per document: the latest loaded version, with earlier versions listed beneath it.
-  const byId = useMemo(() => new Map(docs.map((d) => [d.id, d])), [docs]);
-  const latest = useMemo(() => docs.filter((d) => d.familyVersions.at(-1)?.id === d.id || !d.familyVersions.length), [docs]);
-  const rows = useMemo(
-    () => latest.filter((d) =>
-      (!s.q || `${d.name} ${d.short} ${d.sourceId} ${d.publisher}`.toLowerCase().includes(s.q.toLowerCase())) &&
-      (!s.type || d.type === s.type) && (!s.publisher || d.publisher === s.publisher) &&
-      (!s.applicability || (s.applicability === "NONE" ? !d.applicability.tags.length : d.applicability.tags.includes(s.applicability as never))) &&
-      (!s.status || s.status.split(",").includes(statusOf(d))),
-    ),
-    [latest, s],
-  );
-  // All matching rows are shown (the library is small), so the table always matches the stat strip count.
-  const visible = rows;
-  const active = [s.q, s.type, s.publisher, s.applicability, s.status].some(Boolean);
-  const count = (st: string) => latest.filter((d) => statusOf(d) === st).length;
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [fading, setFading] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const progress = useProgressSteps();
+  const canWrite = role !== "viewer";
+
+  // One row per document. For a demo framework the row is the version the platform is on: the previous one until
+  // its update is applied, then the new one. A document with an uploaded new version is offered once an admin releases it.
+  const rowsAll = useMemo(() => {
+    const demoOf = new Map<string, DemoUpdate>();
+    for (const u of demo) for (const id of [u.previousId, u.currentId]) if (id) demoOf.set(id, u);
+    const hidden = new Set(demo.map((u) => (u.status === "UPDATED" ? u.previousId : u.currentId)).filter(Boolean) as string[]);
+    return docs
+      .filter((d) => !hidden.has(d.id) && (demoOf.has(d.id) || d.familyVersions.at(-1)?.id === d.id || !d.familyVersions.length))
+      .map((d) => {
+        const u = demoOf.get(d.id) ?? null;
+        const imp = u ? null : d.pendingImport;
+        // Users see an update only once an admin has released it; until then the document reads as up to date.
+        const offer: Offer | null = u && u.status !== "UPDATED" && u.released
+          ? { key: u.key, name: `${u.family} ${versionLabel(u.family, u.current)}`, released: true }
+          : imp?.released ? { key: `doc:${d.id}`, name: `${d.short} → ${imp.version ?? d.latestCheck?.latestVersion ?? "new version"}`, released: true, docId: d.id, importId: imp.id } : null;
+        // A connector found a newer version that is not in the library yet: shown as available, installable once uploaded.
+        const found = !u && !offer
+          ? [...d.updates, ...d.familyVersions.flatMap((v) => docs.find((x) => x.id === v.id)?.updates ?? [])]
+              .find((x) => x.changeType === "VERSION_CHANGE" && x.reviewStatus === "NEW" && x.newValue) ?? null
+          : null;
+        return {
+          d, u, offer, found,
+          status: (offer || found ? "AVAILABLE" : "UPDATED") as "AVAILABLE" | "UPDATED",
+          rejected: u?.status === "REJECTED",
+          current: versionLabel(u?.family ?? "", d.version),
+          latest: found ? found.newValue : !offer ? versionLabel(u?.family ?? "", d.version) : u ? versionLabel(u.family, u.current) : imp!.version ?? d.latestCheck?.latestVersion ?? "New version",
+          published: u && (offer || u.status === "UPDATED") ? u.published : d.latestCheck?.publicationDate ?? d.publishedDate,
+        };
+      });
+  }, [docs, demo]);
+  type Row = (typeof rowsAll)[number];
+  // A framework is connected when a monitoring connector watches any version of it.
+  const connectorsOf = (d: SourceRow) => {
+    const seen = new Map<string, SourceRow["monitoring"][number]>();
+    for (const m of [...d.monitoring, ...d.familyVersions.flatMap((v) => docs.find((x) => x.id === v.id)?.monitoring ?? [])]) seen.set(m.id, m);
+    // The main connector first; a document watch (file fingerprint) after it.
+    return [...seen.values()].sort((a, b) => Number(a.mechanism === "HTTP_FINGERPRINT") - Number(b.mechanism === "HTTP_FINGERPRINT"));
+  };
+  const connected = (d: SourceRow) => connectorsOf(d).length > 0;
+  const rows = rowsAll.filter(({ d, status }) =>
+    (!s.source || (s.source === "connected") === connected(d)) &&
+    (!s.q || `${d.name} ${d.short} ${d.sourceId} ${d.publisher}`.toLowerCase().includes(s.q.toLowerCase())) &&
+    (!s.type || d.type === s.type) && (!s.publisher || d.publisher === s.publisher) &&
+    (!s.applicability || (s.applicability === "NONE" ? !d.applicability.tags.length : d.applicability.tags.includes(s.applicability as never))) &&
+    (!s.status || s.status === status));
+  const latest = rowsAll.map((r) => r.d);
+  const available = rowsAll.filter((r) => r.status === "AVAILABLE");
+  const selectable = (r: Row) => canWrite && !r.rejected && !!r.offer?.released;
+  const selectableKeys = rows.filter(selectable).map((r) => r.offer!.key);
+  const picked = rowsAll.filter((r) => r.offer && selected.has(r.offer.key)).map((r) => r.offer!);
+  const active = [s.q, s.type, s.publisher, s.applicability, s.status, s.source].some(Boolean);
+  const connectedCount = rowsAll.filter((r) => connected(r.d)).length;
   const tile = (status: string) => ({ onClick: () => set({ status: s.status === status ? "" : status }), active: s.status === status });
-  const BAD = "UNABLE_TO_VERIFY,CHECK_FAILED";
-  const lastChecked = latest.map((d) => d.latestCheck?.checkedAt).filter(Boolean).sort().pop() ?? null;
+  const toggle = (key: string) => setSelected((x) => { const n = new Set(x); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+
+  const update = async () => {
+    const names = picked.map((o) => o.name);
+    const keys = picked.filter((o) => !o.docId).map((o) => o.key);
+    const uploads = picked.filter((o) => o.docId);
+    setBusy(true);
+    try {
+      await progress.run(`Updating ${picked.length} framework${picked.length === 1 ? "" : "s"}`, UPDATE_STEPS(names), async () => {
+        if (keys.length) await apiSend("/api/demo", { action: "update", keys });
+        // Uploaded versions released by an admin are installed into the library one by one.
+        for (const o of uploads) await apiSend(`/api/frameworks/${o.docId}/apply-update`);
+      }, names);
+      toast.success(`${names.join(", ")} installed`, { description: "Client controls on the previous version are listed in Change Analytics for approval." });
+      setSelected(new Set());
+      qc.invalidateQueries(); // Change Analytics and Custom Control Mapping read this state too
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    } finally { setBusy(false); }
+  };
+  const reject = async () => {
+    const keys = picked.filter((o) => !o.docId).map((o) => o.key);
+    setBusy(true);
+    try {
+      if (keys.length) await apiSend("/api/demo", { action: "reject", keys });
+      // An uploaded version goes back to the admin: its release is withdrawn.
+      for (const o of picked.filter((o) => o.importId)) await apiSend(`/api/ai-import/${o.importId}/release`, { released: false });
+      setFading(new Set(picked.map((o) => o.key)));
+      await sleep(700);
+      toast.info(`Update rejected: ${picked.map((o) => o.name).join(", ")}`, { description: "The current version stays in use." });
+      setSelected(new Set());
+      qc.invalidateQueries(); // Change Analytics and Custom Control Mapping read this state too
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Reject failed");
+    } finally { setBusy(false); setFading(new Set()); }
+  };
 
   return (
     <Page>
+      {progress.overlay}
       <PageHeader
         title={TERMS.sourceIndex}
-        description="Authoritative documents in the platform, their approved versions, and the latest version verified at each publisher's official source. Check for updates, then upload a new official version for analysis and review."
-        actions={<Button variant="primary" disabled={!!running || !latest.length} onClick={() => run(latest.map((d) => ({ id: d.id, short: d.short })))}>{running ? <Loader2 className="animate-spin" /> : <RefreshCw />} {running ? `Checking ${running.done + 1} of ${running.total}…` : "Check all for updates"}</Button>}
+        description="Authoritative documents in the platform, the version in use, and the latest version published. Select the frameworks to update, then choose Update or Reject."
       />
       {!docs.length ? (
         <Card><EmptyState icon={BookOpenText} title="No authoritative documents loaded" description="The document library has not been loaded yet." /></Card>
       ) : (
         <>
           <StatStrip
-            className="mb-4 xl:grid-cols-5"
+            className="mb-4 sm:grid-cols-4 xl:grid-cols-4"
             items={[
-              { label: "Frameworks and documents", value: latest.length, onClick: () => set({ status: "" }), active: !s.status, sub: `${facet(latest, (d) => d.publisher).length} publishers` },
-              { ...tile("UPDATE_AVAILABLE"), label: "Updates available", value: count("UPDATE_AVAILABLE"), tone: count("UPDATE_AVAILABLE") ? "warning" : "default", sub: "Verified at the official source" },
-              { ...tile("UP_TO_DATE"), label: "Up to date", value: count("UP_TO_DATE"), sub: "No newer version verified" },
-              { ...tile(BAD), label: "Unable to verify or failed", value: count("UNABLE_TO_VERIFY") + count("CHECK_FAILED"), sub: `${count("NOT_CHECKED")} not checked yet` },
-              { label: "Last checked", value: lastChecked ? formatRelative(lastChecked) : "Never", sub: lastChecked ? formatDateTime(lastChecked) : "Run Check for Updates" },
+              { label: "Frameworks and documents", value: latest.length, onClick: () => set({ status: "", source: "" }), active: !s.status && !s.source, sub: `${facet(latest, (d) => d.publisher).length} publishers` },
+              { ...tile("AVAILABLE"), label: "Updates available", value: available.length, tone: available.length ? "warning" : "default", sub: "Newer version published" },
+              { ...tile("UPDATED"), label: "Up to date", value: rowsAll.length - available.length, tone: "success", sub: "On the latest version" },
+              { label: "Connectors", value: connectedCount, onClick: () => set({ source: s.source === "connected" ? "" : "connected" }), active: s.source === "connected", sub: "Official sources checked every day for new versions", hint: "Frameworks an official-source connector watches. Select to list them." },
             ]}
           />
+          {available.length > 0 && (
+            <Card className="mb-4 flex flex-wrap items-center gap-3 border-warning/50 bg-warning-soft/40 px-4 py-3">
+              <BellRing className="size-4 text-warning" />
+              <div className="min-w-0 flex-1 text-[13px]">
+                <div className="font-semibold text-fg">Updates available.</div>
+                <div className="text-xs text-fg-2">
+                  {available.map((r) => `${r.u?.family ?? r.d.short} ${r.current ?? ""} → ${r.latest ?? ""}`).join(" · ")}
+                  {canWrite && (picked.length ? ` · ${picked.length} selected` : " · select frameworks in the table")}
+                </div>
+              </div>
+              {canWrite && <>
+                <Button variant="primary" disabled={busy || !picked.length} onClick={update}>{busy && progress.running ? <Loader2 className="animate-spin" /> : <RefreshCw />} Update{picked.length ? ` (${picked.length})` : ""}</Button>
+                <Button disabled={busy || !picked.length} onClick={reject}><X /> Reject</Button>
+              </>}
+            </Card>
+          )}
           <Card>
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
               <div className="relative min-w-[200px] flex-1">
@@ -172,67 +294,79 @@ export function SourcesCatalog({ docs, role }: { docs: SourceRow[]; role: Role }
                 value={s.applicability} onChange={(v) => set({ applicability: v })} allLabel="Any applicability" aria-label="Applicability"
                 options={[...APPLICABILITY_TAGS.map((t) => ({ value: t, label: t, hint: latest.filter((d) => d.applicability.tags.includes(t)).length })), { value: "NONE", label: "Not classified", hint: latest.filter((d) => !d.applicability.tags.length).length }]}
               />
-              <Select value={s.status} onChange={(v) => set({ status: v })} allLabel="Any update status" options={[...Object.entries(UPDATE_CHECK).map(([value, x]) => ({ value, label: x.label, hint: count(value) })), { value: BAD, label: "Unable to verify or failed", hint: count("UNABLE_TO_VERIFY") + count("CHECK_FAILED") }]} aria-label="Update status" />
-              {active && <Button variant="ghost" size="sm" onClick={() => set({ q: "", type: "", publisher: "", applicability: "", status: "" })}><X /> Clear</Button>}
+              <Select value={s.status} onChange={(v) => set({ status: v })} allLabel="Any update status" options={STATUS_FILTERS.map((x) => ({ ...x, hint: rowsAll.filter((r) => r.status === x.value).length }))} aria-label="Update status" />
+              <Select value={s.source} onChange={(v) => set({ source: v })} allLabel="Any source" options={[{ value: "connected", label: "Connected (automatic)", hint: connectedCount }, { value: "manual", label: "Manual upload", hint: rowsAll.length - connectedCount }]} aria-label="Source" />
+              {active && <Button variant="ghost" size="sm" onClick={() => set({ q: "", type: "", publisher: "", applicability: "", status: "", source: "" })}><X /> Clear</Button>}
             </div>
-            <div className="px-4 py-2 text-xs text-muted tabular">{rows.length} of {latest.length} documents · select a row for details and evidence</div>
+            <div className="px-4 py-2 text-xs text-muted tabular">{s.source === "connected" ? `${rows.length} connectors` : `${rows.length} of ${rowsAll.length} documents`} · select a name for details</div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
                   <tr className="border-b border-border bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                    <th className="w-8 py-2 pl-3" aria-label="Expand" />
+                    <th className="w-10 py-2 pl-4">
+                      {selectableKeys.length > 0 && (
+                        <input
+                          type="checkbox" aria-label="Select all updates" className="size-4 cursor-pointer accent-[#2e2e38]"
+                          checked={selectableKeys.every((k) => selected.has(k))}
+                          onChange={(e) => setSelected(e.target.checked ? new Set(selectableKeys) : new Set())}
+                        />
+                      )}
+                    </th>
                     <th className="px-3 py-2">Framework / document</th><th className="px-3 py-2">Type</th>
-                    <th className="px-3 py-2">Previous version</th><th className="px-3 py-2">Current approved version</th><th className="px-3 py-2">Latest available version</th>
-                    <th className="px-3 py-2">Last checked</th><th className="px-3 py-2">Update status</th><th className="px-3 py-2">Update</th>
+                    <th className="px-3 py-2">Current version</th><th className="px-3 py-2">Latest version</th>
+                    <th className="px-3 py-2">Last published date</th><th className="px-3 py-2">Connector</th><th className="px-3 py-2">Update status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((d) => {
-                    const c = d.latestCheck;
-                    const st = UPDATE_CHECK[statusOf(d)];
-                    const open = s.open === d.id;
+                  {rows.map((r) => {
+                    const { d, u } = r;
+                    const o = r.offer;
+                    const fade = !!o && fading.has(o.key);
                     return (
-                      <Fragment key={d.id}>
-                        <tr onClick={() => set({ open: open ? "" : d.id })} aria-expanded={open} className={cn("cursor-pointer border-b border-border align-top hover:bg-surface-2", open && "bg-surface-2")}>
-                          <td className="py-2.5 pl-3"><ChevronRight className={cn("size-4 text-subtle transition-transform", open && "rotate-90 text-fg")} /></td>
-                          <td className="min-w-[220px] px-3 py-2.5">
-                            <Link href={`/sources/${d.id}`} onClick={(e) => e.stopPropagation()} className="font-medium text-fg hover:text-accent hover:underline">{d.short}</Link>
-                            <div className="line-clamp-1 text-[11px] text-muted">{d.publisher} · <Mono className="text-[11px]">{d.sourceId}</Mono> · {formatNumber(d.obligations)} requirements</div>
-                          </td>
-                          <td className="px-3 py-2.5 text-xs text-fg-2">{d.type ?? "—"}</td>
-                          <td className="px-3 py-2.5 text-xs">
-                            {d.familyVersions.length > 1 ? d.familyVersions.filter((v) => v.id !== d.id).reverse().map((v) => {
-                              const n = byId.get(v.id)?.clientControls ?? 0;
-                              return (
-                                <div key={v.id}>
-                                  <Link href={`/sources/${v.id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-accent hover:underline">{v.version ?? v.short}</Link>
-                                  {n > 0 && <div className="text-[11px] text-muted">{n} client control{n === 1 ? "" : "s"} still mapped</div>}
-                                </div>
-                              );
-                            }) : <RecordedPrevious p={d.recordedPrevious} law={/law|regulation/i.test(d.type ?? "")} />}
-                          </td>
-                          <td className="px-3 py-2.5 text-xs">
-                            {d.version ? <Mono>{d.version}</Mono> : (
-                              <Tooltip content="The library holds this text without a version number; laws are identified by their enactment and amendment dates.">
-                                <span className="text-muted">{/law|regulation/i.test(d.type ?? "") ? "As enacted" : "Not recorded"}</span>
-                              </Tooltip>
-                            )}
-                          </td>
-                          <td className="px-3 py-2.5 text-xs">
-                            {c?.latestVersion && !/[　-鿿＀-￯]/.test(c.latestVersion) ? <span className={cn(c.status === "UPDATE_AVAILABLE" ? "font-semibold text-warning" : "text-fg-2")}>{c.latestVersion}</span> : <span className="text-subtle">—</span>}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-xs text-fg-2">{c ? formatRelative(c.checkedAt) : <span className="text-subtle">Never</span>}</td>
-                          <td className="px-3 py-2.5">
-                            <Tooltip content={c?.message ?? st.hint}><span className="flex items-center gap-1.5 whitespace-nowrap text-xs"><Dot tone={st.tone} />{st.label}</span></Tooltip>
-                          </td>
-                          <td className="px-3 py-2.5"><UpdateAction d={d} role={role} /></td>
-                        </tr>
-                        {open && (
-                          <tr className="border-b border-border bg-surface-2/60">
-                            <td colSpan={9} className="px-4 py-4"><CheckDetails d={d} /></td>
-                          </tr>
-                        )}
-                      </Fragment>
+                      <tr key={d.id} className={cn("border-b border-border align-top", o && selected.has(o.key) && "bg-accent-soft/40")}>
+                        <td className="py-2.5 pl-4">
+                          {selectable(r) && (
+                            <input
+                              type="checkbox" aria-label={`Select ${u?.family ?? d.short} update`} className={cn("size-4 cursor-pointer accent-[#2e2e38] transition-opacity duration-700", fade && "opacity-0")}
+                              checked={selected.has(o!.key)} onChange={() => toggle(o!.key)}
+                            />
+                          )}
+                        </td>
+                        <td className="min-w-[220px] px-3 py-2.5">
+                          <Link href={`/sources/${d.id}`} className="font-medium text-fg hover:text-accent hover:underline">{d.short}</Link>
+                          <div className="line-clamp-1 text-[11px] text-muted">{d.publisher} · <Mono className="text-[11px]">{d.sourceId}</Mono> · {formatNumber(d.obligations)} requirements</div>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-fg-2">{d.type ?? "—"}</td>
+                        <td className="px-3 py-2.5 text-xs">
+                          {r.current ? <Mono>{r.current}</Mono> : <span className="text-muted">{/law|regulation/i.test(d.type ?? "") ? "As enacted" : "Not recorded"}</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs">
+                          {r.latest ? <span className={cn(r.status === "AVAILABLE" && !r.rejected ? "font-semibold text-warning" : "text-fg-2")}>{r.latest}</span> : <span className="text-subtle">—</span>}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-xs text-fg-2">{r.published ? formatDate(r.published) : <span className="text-subtle">—</span>}</td>
+                        <td className="px-3 py-2.5 text-xs">
+                          {connectorsOf(d).length ? (
+                            <div className="space-y-0.5">
+                              {connectorsOf(d).slice(0, 1).map((m) => (
+                                <div key={m.id} className="flex items-center gap-1.5 whitespace-nowrap text-fg-2" title={`${m.name} · ${MECHANISM_LABEL[m.mechanism as Mechanism] ?? m.mechanism}`}><Plug className="size-3 text-success" />{m.name}</div>
+                              ))}
+                              {connectorsOf(d).length > 1 && <div className="pl-[18px] text-[11px] text-muted">+ {connectorsOf(d).slice(1).map((m) => (m.mechanism === "HTTP_FINGERPRINT" ? "document watch" : m.name)).join(", ")}</div>}
+                            </div>
+                          ) : <span className="text-subtle">Manual upload</span>}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {r.status === "AVAILABLE" ? (
+                            <Tooltip content={r.rejected ? "Update rejected; the current version stays in use" : r.found ? `Version ${r.latest} was found by ${r.found.connector}; it needs to be uploaded before it can be installed` : !o?.released ? `Version ${r.latest} is waiting for an admin to release it` : `Version ${r.latest} is available`}>
+                              <span className={cn("flex flex-col whitespace-nowrap text-xs transition-opacity duration-700", (r.rejected || fade) && "opacity-50")}>
+                                <span className="flex items-center gap-1.5"><Dot tone="warning" />Update available</span>
+                                {!o?.released && !r.rejected && <span className="pl-3 text-[11px] text-muted">{r.found ? "Found by connector · awaiting upload" : "Awaiting admin release"}</span>}
+                              </span>
+                            </Tooltip>
+                          ) : (
+                            <span className="flex items-center gap-1.5 whitespace-nowrap text-xs"><Dot tone="success" />Updated</span>
+                          )}
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
@@ -242,9 +376,6 @@ export function SourcesCatalog({ docs, role }: { docs: SourceRow[]; role: Role }
           </Card>
         </>
       )}
-      <p className="mt-3 text-[11px] text-subtle">
-        A version is reported only when the publisher&apos;s official source states it. When a source cannot be read reliably the status is &ldquo;Unable to verify&rdquo;, never &ldquo;Up to date&rdquo;.
-      </p>
     </Page>
   );
 }

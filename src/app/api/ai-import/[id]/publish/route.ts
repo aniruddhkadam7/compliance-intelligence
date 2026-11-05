@@ -10,7 +10,7 @@ export const maxDuration = 300;
 const Body = z.object({
   mode: z.enum(["NEW_VERSION", "NEW_DOCUMENT", "SAME_VERSION"]),
   parentSourceId: z.string().trim().max(20).optional(),
-  name: z.string().trim().max(300).optional(),
+  name: z.string().trim().max(1000).optional(),
   versionLabel: z.string().trim().max(40).optional(),
   targetFrameworkId: z.string().max(40).optional(),
   note: z.string().trim().max(2000).optional(),

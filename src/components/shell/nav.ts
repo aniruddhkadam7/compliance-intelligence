@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Library, Network, ShieldCheck, GitCompareArrows, DatabaseZap, BookOpenText, Settings2, type LucideIcon,
+  LayoutDashboard, Library, Network, Plug, ShieldCheck, GitCompareArrows, DatabaseZap, BookOpenText, Settings2, type LucideIcon,
 } from "lucide-react";
 import { TERMS } from "@/lib/terms";
 
@@ -12,7 +12,7 @@ export interface NavItem {
   adminOnly?: boolean;
 }
 
-// Updates & Monitoring (/updates) is reached from Sources and the notification bell.
+// Connectors is the Updates & Connectors page (/updates); detected updates also reach it from the notification bell.
 export const NAV: { section: string; items: NavItem[] }[] = [
   { section: "Intelligence", items: [{ href: "/overview", label: TERMS.overview, icon: LayoutDashboard }] },
   {
@@ -24,7 +24,7 @@ export const NAV: { section: string; items: NavItem[] }[] = [
     ],
   },
   {
-    section: "Client",
+    section: "Custom frameworks",
     items: [
       { href: "/controls", label: TERMS.clientControls, icon: ShieldCheck },
       { href: "/change-analytics", label: TERMS.versionImpact, icon: GitCompareArrows },
@@ -33,8 +33,9 @@ export const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Operations",
     items: [
+      { href: "/updates", label: "Connectors", icon: Plug },
       { href: "/data", label: TERMS.data, icon: DatabaseZap },
-      { href: "/admin", label: "Admin console", icon: Settings2, adminOnly: true },
+      { href: "/admin", label: "Admin Console", icon: Settings2, adminOnly: true },
     ],
   },
 ];

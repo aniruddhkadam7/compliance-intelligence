@@ -23,7 +23,7 @@ interface Draft {
   id: string; fileName: string; status: string; model: string; pages: number; chunks: number; chunksDone: number; detected: Detected | null;
   matchKind: "SAME_VERSION" | "NEW_VERSION" | "NEW_DOCUMENT" | null; match: { id: string; name: string; sourceId: string; versionLabel: string | null } | null;
   summary: string | null; usage: { input: number; output: number; calls: number } | null; error: string | null; createdBy: string; reviewedBy: string | null; createdAt: string;
-  publishedFrameworkId: string | null; suggestedSourceId: string; sections: Section[]; relationCounts: Record<string, number> | null;
+  publishedFrameworkId: string | null; suggestedSourceId: string; identifiedAs: { frameworkId: string | null; name: string; short: string; uploadedFor: string | null } | null; sections: Section[]; relationCounts: Record<string, number> | null;
   comparison: { base: { id: string; short: string }; summary: { added: number; removed: number; changed: number; unchanged: number; domainsAdded: string[]; domainsRemoved: string[]; segmentsAdded: number; segmentsRemoved: number; comparable: boolean } } | null;
 }
 interface ListItem { id: string; fileName: string; status: string; detected: Detected | null; matchKind: string | null; createdAt: string; createdBy: string; _count: { sections: number } }
@@ -176,11 +176,58 @@ export function DraftView({ id, onBack }: { id: string; onBack: () => void }) {
         </Card>
       )}
 
+      {d.status === "READY" && <WrongDocument d={d} onBack={onBack} onSwitched={() => { qc.invalidateQueries({ queryKey: ["ai-import", id] }); qc.invalidateQueries({ queryKey: ["ai-imports"] }); }} />}
       {(d.status === "READY" || d.status === "PUBLISHED") && (det as unknown as { quality?: Quality })?.quality && <QualityCard q={(det as unknown as { quality: Quality }).quality} checks={(det as unknown as { checks?: Record<string, unknown> }).checks} />}
       {(d.status === "READY" || d.status === "PUBLISHED") && <Review d={d} onDone={() => { qc.invalidateQueries({ queryKey: ["ai-import", id] }); qc.invalidateQueries({ queryKey: ["ai-imports"] }); qc.invalidateQueries(); router.refresh(); }} />}
 
       {d.usage && <p className="text-[11px] text-subtle">AI usage: {d.usage.calls} calls · {formatNumber(d.usage.input)} input and {formatNumber(d.usage.output)} output tokens · model {d.model}</p>}
     </div>
+  );
+}
+
+type Checks = { familyMatches?: boolean };
+const checksOf = (d: Draft) => ((d.detected as unknown as { checks?: Checks } | null)?.checks ?? {});
+/** The file was uploaded for one document but is another: publishing waits until the reviewer decides. */
+const wrongDocument = (d: Draft) => checksOf(d).familyMatches === false;
+
+function WrongDocument({ d, onBack, onSwitched }: { d: Draft; onBack: () => void; onSwitched: () => void }) {
+  const [busy, setBusy] = useState(false);
+  if (!wrongDocument(d)) return null;
+  const known = !!d.identifiedAs?.frameworkId;
+  const other = d.identifiedAs?.short ?? d.detected?.shortTitle ?? "another document";
+  const chosen = d.identifiedAs?.uploadedFor ?? "the document you chose";
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try { await fn(); } catch (e) { toast.error(e instanceof Error ? e.message : "Action failed"); } finally { setBusy(false); }
+  };
+  const useIt = () => run(async () => {
+    await apiSend(`/api/ai-import/${d.id}/use-identified`);
+    toast.success(`The file is now compared with ${other}`);
+    onSwitched();
+  });
+  const discard = () => run(async () => {
+    await apiSend(`/api/ai-import/${d.id}`, { note: `Wrong document: uploaded for ${chosen}, identified as ${other}` }, "DELETE");
+    toast.info("Draft discarded. Choose the right file.");
+    onBack();
+  });
+  return (
+    <Card className="border-danger/40 bg-danger-soft/40">
+      <CardBody className="flex flex-wrap items-start gap-3 text-[13px]">
+        <ShieldAlert className="mt-0.5 size-5 shrink-0 text-danger" />
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-fg">Wrong document? You are uploading a new version of {chosen}, but this file is {d.detected?.shortTitle || other}.</div>
+          <div className="text-fg-2">
+            <span className="line-clamp-2" title={d.detected?.title}>Identified from the document: {d.detected?.title || other}</span>
+            {known ? <>It matches <b>{other}</b> in the library.</> : "It is not in the library."}
+            {known ? ` Do you want to upload it for ${other} instead?` : " Do you want to add it as a new document instead?"}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" disabled={busy} onClick={useIt}>{busy ? <Loader2 className="animate-spin" /> : <ArrowRight />} {known ? `Use it for ${other}` : "Add it as a new document"}</Button>
+          <Button disabled={busy} onClick={discard}><Trash2 /> Upload a different file</Button>
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -334,7 +381,7 @@ function Review({ d, onDone }: { d: Draft; onDone: () => void }) {
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" disabled={busy || !toPublish} onClick={publish}>{busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} Publish {toPublish} section{toPublish === 1 ? "" : "s"}</Button>
+              <Button variant="primary" disabled={busy || !toPublish || wrongDocument(d)} title={wrongDocument(d) ? "Resolve the document mismatch above first" : undefined} onClick={publish}>{busy ? <Loader2 className="animate-spin" /> : <CheckCircle2 />} Publish {toPublish} section{toPublish === 1 ? "" : "s"}</Button>
               <Button disabled={busy} onClick={discard}><Trash2 /> Reject</Button>
               <Button disabled={busy} variant="ghost" onClick={reprocess}>Request reprocessing</Button>
               <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Review comment (recorded with the decision)" className="min-w-[260px] flex-1" aria-label="Review comment" />

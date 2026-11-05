@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
+import { apiSend } from "@/lib/client/api";
 import { warmRoute } from "@/lib/client/prefetch";
 import { cn } from "@/lib/utils";
 import { EyLogo } from "./ey-logo";
@@ -11,6 +13,17 @@ export function Sidebar({ badges, role, onNavigate }: { badges: { updates: numbe
   const pathname = usePathname();
   const qc = useQueryClient();
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
+  // "Prepared by EY" doubles as the demo rollback: it silently restores the demo-ready state and reloads the page.
+  const rolling = useRef(false);
+  const rollback = async () => {
+    if (rolling.current || !role || role === "viewer") return;
+    rolling.current = true;
+    try {
+      await apiSend("/api/demo", { action: "rollback" });
+    } finally {
+      window.location.assign(pathname.startsWith("/controls/") ? "/controls" : window.location.href);
+    }
+  };
 
   return (
     <aside className="flex h-full w-[268px] flex-col border-r border-border bg-surface">
@@ -54,7 +67,7 @@ export function Sidebar({ badges, role, onNavigate }: { badges: { updates: numbe
         ))}
       </nav>
       <div className="border-t border-border px-4 py-3 text-[11px] leading-snug text-subtle">
-        <div className="mb-1 font-semibold text-muted">Prepared by EY</div>
+        <div className="mb-1 select-none font-semibold text-muted" onClick={rollback}>Prepared by EY</div>
         Prototype for demonstration; not a certified compliance system.
       </div>
     </aside>

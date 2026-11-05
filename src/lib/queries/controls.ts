@@ -3,8 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { shortName } from "@/lib/frameworks";
 import { controlsNeedingReview } from "@/lib/updates/impact";
-import { frameworkUpdates, type FrameworkUpdate, type FrameworkUpdateKind } from "./sources";
-const KIND_ORDER: FrameworkUpdateKind[] = ["READY", "AVAILABLE", "NEWER_IN_LIBRARY"];
+import { controlVersions, type Highlight } from "@/lib/demo/state";
 import { ListParams, paging } from "./params";
 
 export const ControlFilters = ListParams.extend({
@@ -23,21 +22,32 @@ export type ControlFilters = z.infer<typeof ControlFilters>;
 /** ControlObligation.mappingType of illustrative demonstration links (see scripts/seed-nist-demo.ts). */
 export const DEMO_MAPPING = "DEMO";
 
-/** Per control: mapped documents that have a newer version (released for install, or at the publisher). */
-async function controlFrameworkUpdates(controlIds?: string[]) {
-  const updates = await frameworkUpdates();
-  const out = new Map<string, FrameworkUpdate[]>();
-  if (!updates.size) return { updates, byControl: out };
-  const links = await prisma.controlObligation.findMany({
-    where: { citation: { frameworkId: { in: [...updates.keys()] } }, control: { inScope: true }, ...(controlIds && { controlId: { in: controlIds } }) },
-    distinct: ["controlId", "citationId"], select: { controlId: true, citation: { select: { frameworkId: true } } },
+/** A framework update applied in Sources as it affects one control: approval pending (yellow) or approved (green). */
+export interface ControlUpdateFlag { key: string; family: string; previous: string; current: string; state: Highlight }
+
+type Versions = Awaited<ReturnType<typeof controlVersions>>;
+
+/** Applied updates whose mapping approval is open (controls uploaded before the update). */
+const approvingUpdates = (v: Versions) => v.updates.filter((u) => u.status === "UPDATED" && !u.uploadedAfter);
+
+function updateFlags(v: Versions, controlName: string): ControlUpdateFlag[] {
+  return approvingUpdates(v).filter((u) => u.affected.has(controlName))
+    .map((u) => ({ key: u.key, family: u.family, previous: u.previous, current: u.current, state: u.approved.has(controlName) ? "updated" : "pending" }));
+}
+
+/**
+ * Control-to-framework links as the client sees them: each control shows only the framework version it points to
+ * (see src/lib/demo/state.ts), so a framework's previous and new version are never both listed.
+ */
+async function effectiveLinks(v: Versions) {
+  const rows = await prisma.$queryRaw<{ controlId: string; controlName: string; frameworkId: string; name: string; family: string | null }[]>`
+    SELECT DISTINCT o."controlId", k."controlName", c."frameworkId", f."name", f."family"
+    FROM "ControlObligation" o JOIN "Citation" c ON c.id = o."citationId" JOIN "Framework" f ON f.id = c."frameworkId" JOIN "CcfControl" k ON k.id = o."controlId"`;
+  const hidden = new Map<string, Set<string>>();
+  return rows.filter((r) => {
+    if (!hidden.has(r.controlName)) hidden.set(r.controlName, v.resolve(r.controlName).hidden);
+    return !hidden.get(r.controlName)!.has(r.frameworkId);
   });
-  for (const l of links) {
-    const list = out.get(l.controlId) ?? [];
-    if (!list.some((u) => u.frameworkId === l.citation.frameworkId)) list.push(updates.get(l.citation.frameworkId)!);
-    out.set(l.controlId, list);
-  }
-  return { updates, byControl: out };
 }
 
 const SORTS = ["controlName", "category", "scope", "title"] as const;
@@ -70,13 +80,16 @@ export async function listControls(f: ControlFilters) {
     AND: [
       f.mapping === "mapped" ? { obligations: { some: {} } } : {},
       f.mapping === "unmapped" ? { obligations: { none: {} } } : {},
-      f.frameworkId ? { obligations: { some: { citation: { frameworkId: f.frameworkId } } } } : {},
-      f.family && !f.frameworkId ? { obligations: { some: { citation: { framework: { family: f.family } } } } } : {},
     ],
   };
+  const v = await controlVersions();
+  if (f.frameworkId || f.family) {
+    const links = await effectiveLinks(v);
+    where.id = { in: [...new Set(links.filter((l) => (f.frameworkId ? l.frameworkId === f.frameworkId : (l.family ?? l.name) === f.family)).map((l) => l.controlId))] };
+  }
   if (f.mapping === "conflict") where.id = { in: await conflictControlIds() };
   if (f.mapping === "review") where.id = { in: [...(await controlsNeedingReview()).keys()] };
-  if (f.mapping === "update") where.id = { in: [...(await controlFrameworkUpdates()).byControl.keys()] };
+  if (f.mapping === "update") where.controlName = { in: [...new Set(approvingUpdates(v).flatMap((u) => [...u.affected]))] };
 
   const sortKey = (SORTS as readonly string[]).includes(f.sort ?? "") ? f.sort! : "controlName";
   const [rows, total] = await Promise.all([
@@ -91,8 +104,8 @@ export async function listControls(f: ControlFilters) {
     prisma.ccfControl.count({ where }),
   ]);
   // Controls whose framework mapping is affected by a new version and awaits review.
-  const [review, { byControl }] = await Promise.all([controlsNeedingReview(rows.map((r) => r.id)), controlFrameworkUpdates(rows.map((r) => r.id))]);
-  return { items: rows.map((r) => ({ ...r, review: review.get(r.id) ?? null, frameworkUpdates: byControl.get(r.id) ?? [] })), total, page: f.page, pageSize: f.pageSize };
+  const review = await controlsNeedingReview(rows.map((r) => r.id));
+  return { items: rows.map((r) => ({ ...r, review: review.get(r.id) ?? null, frameworkUpdates: updateFlags(v, r.controlName) })), total, page: f.page, pageSize: f.pageSize };
 }
 
 /** The client's scope: how many controls are in it, and how many the workbook lists as the client's selection. */
@@ -120,40 +133,43 @@ export async function setControlScope(change: { ids: string[]; inScope: boolean 
 }
 
 export async function controlFacets() {
-  const [cats, scopes, prefixes, fwRows] = await Promise.all([
+  const v = await controlVersions();
+  const [cats, scopes, prefixes, links, names] = await Promise.all([
     prisma.ccfControl.groupBy({ by: ["category"], _count: { _all: true } }),
     prisma.ccfControl.groupBy({ by: ["scope"], _count: { _all: true } }),
     prisma.ccfControl.groupBy({ by: ["domainPrefix"], _count: { _all: true } }),
-    // Distinct controls mapped to each framework version (any mapping type).
-    prisma.$queryRaw<{ id: string; name: string; family: string | null; controls: bigint }[]>`
-      SELECT f."id", f."name", f."family", COUNT(DISTINCT o."controlId") AS controls
-      FROM "Framework" f
-      JOIN "Citation" c ON c."frameworkId" = f."id"
-      JOIN "ControlObligation" o ON o."citationId" = c."id"
-      GROUP BY f."id", f."name", f."family"`,
+    effectiveLinks(v),
+    prisma.ccfControl.findMany({ select: { controlName: true } }),
   ]);
-  // Per family: distinct controls across all its versions, plus each version's own count.
-  const famIds = new Map<string, string[]>();
-  for (const r of fwRows) famIds.set(r.family ?? r.name, [...(famIds.get(r.family ?? r.name) ?? []), r.id]);
-  const famCounts = await Promise.all([...famIds.entries()].map(async ([family, ids]) => ({
-    family,
-    controls: await prisma.ccfControl.count({ where: { obligations: { some: { citation: { frameworkId: { in: ids } } } } } }),
-    versions: fwRows.filter((r) => ids.includes(r.id)).map((r) => ({ id: r.id, short: shortName(r.name), controls: Number(r.controls) }))
-      .sort((a, b) => a.short.localeCompare(b.short, undefined, { numeric: true })),
-  })));
+  // Per family: distinct controls across the versions they point to, plus each version's own count.
+  const fams = new Map<string, { controls: Set<string>; versions: Map<string, { id: string; short: string; controls: Set<string> }> }>();
+  for (const l of links) {
+    const key = l.family ?? l.name;
+    const fam = fams.get(key) ?? { controls: new Set(), versions: new Map() };
+    fam.controls.add(l.controlId);
+    const ver = fam.versions.get(l.frameworkId) ?? { id: l.frameworkId, short: shortName(l.name), controls: new Set<string>() };
+    ver.controls.add(l.controlId);
+    fam.versions.set(l.frameworkId, ver);
+    fams.set(key, fam);
+  }
+  const present = new Set(names.map((n) => n.controlName));
   return {
-    frameworks: famCounts.sort((a, b) => a.family.localeCompare(b.family)),
+    frameworks: [...fams].map(([family, x]) => ({
+      family, controls: x.controls.size,
+      versions: [...x.versions.values()].map((y) => ({ id: y.id, short: y.short, controls: y.controls.size })).sort((a, b) => a.short.localeCompare(b.short, undefined, { numeric: true })),
+    })).sort((a, b) => a.family.localeCompare(b.family)),
     categories: cats.filter((c) => c.category).map((c) => ({ value: c.category!, count: c._count._all })).sort((a, b) => a.value.localeCompare(b.value)),
     scopes: scopes.filter((c) => c.scope).map((c) => ({ value: c.scope!, count: c._count._all })).sort((a, b) => b.count - a.count),
     prefixes: prefixes.map((c) => ({ value: c.domainPrefix, count: c._count._all })).sort((a, b) => a.value.localeCompare(b.value)),
     scope: await controlScope(),
-    // Mapped documents with a newer version, and how many in-scope controls each affects.
-    updates: await (async () => {
-      const { updates, byControl } = await controlFrameworkUpdates();
-      return [...updates.values()]
-        .map((u) => ({ ...u, controls: [...byControl.values()].filter((l) => l.some((x) => x.frameworkId === u.frameworkId)).length }))
-        .filter((u) => u.controls > 0).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.controls - a.controls);
-    })(),
+    // Framework updates applied in Sources, with how many of the client's controls each affects and how many are approved.
+    updates: v.updates.filter((u) => u.status === "UPDATED").map((u) => {
+      const affected = [...u.affected].filter((n) => present.has(n));
+      return {
+        key: u.key, family: u.family, previous: u.previous, current: u.current, uploadedAfter: u.uploadedAfter,
+        affected: affected.length, approved: u.uploadedAfter ? affected.length : affected.filter((n) => u.approved.has(n)).length,
+      };
+    }),
   };
 }
 
@@ -175,6 +191,10 @@ export async function getControl(idOrName: string) {
     },
   });
   if (!c) return null;
+  const v = await controlVersions();
+  const { hidden, highlight } = v.resolve(c.controlName);
+  c.obligations = c.obligations.filter((o) => !hidden.has(o.citation.framework.id));
+  for (const t of c.testProcedures) t.obligations = t.obligations.filter((l) => !hidden.has(l.citation.frameworkId));
 
   const primaryA = c.mappings.find((m) => m.authoritative);
   const primaryW = c.mappings.find((m) => !m.authoritative);
@@ -239,6 +259,9 @@ export async function getControl(idOrName: string) {
     procedureTrace,
     controlLevel,
     citationTotal: c.obligations.length,
+    /** Framework documents of an applied update: "pending" (previous version, awaiting approval) or "updated" (approved). */
+    versionFlags: Object.fromEntries(highlight) as Record<string, Highlight>,
+    frameworkUpdates: updateFlags(v, c.controlName),
   };
 }
 

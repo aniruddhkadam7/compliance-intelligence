@@ -5,7 +5,7 @@ import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-quer
 import { toast } from "sonner";
 import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
-import { ArrowRight, BellRing, Check, FileSpreadsheet, GitCompareArrows, History, Loader2, Search, X } from "lucide-react";
+import { ArrowRight, BellRing, Check, FileSpreadsheet, History, Loader2, Search, X } from "lucide-react";
 import { EmptyState, Mono, Page, PageHeader } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,22 +21,15 @@ import { cn, formatDateTime, formatNumber } from "@/lib/utils";
 import { TERMS } from "@/lib/terms";
 import { ClientControlActions } from "@/components/client-control-actions";
 
-type UpdateKind = "READY" | "AVAILABLE" | "NEWER_IN_LIBRARY";
-interface FrameworkUpdate { frameworkId: string; short: string; from: string | null; to: string | null; latest: string | null; kind: UpdateKind }
-
-/** How far along each kind of framework update is, as the client sees it. */
-const UPDATE_KIND: Record<UpdateKind, { badge: string; tone: "warning" | "info"; line: (u: FrameworkUpdate) => string }> = {
-  READY: { badge: "Update ready", tone: "warning", line: (u) => `${u.short}: version ${u.to ?? "new"} is released and ready to install` },
-  NEWER_IN_LIBRARY: { badge: "Newer version", tone: "warning", line: (u) => `Mapped to ${u.short}; ${u.latest ?? `version ${u.to}`} is in the library` },
-  AVAILABLE: { badge: "New version", tone: "info", line: (u) => `${u.short}: version ${u.to ?? "new"} published, not yet in the library` },
-};
-const KIND_ORDER: UpdateKind[] = ["READY", "NEWER_IN_LIBRARY", "AVAILABLE"];
+/** A framework update applied in Sources as it affects a control: yellow until its mapping is approved, then green. */
+interface UpdateFlag { key: string; family: string; previous: string; current: string; state: "pending" | "updated" }
+interface AppliedUpdate { key: string; family: string; previous: string; current: string; uploadedAfter: boolean; affected: number; approved: number }
 
 interface ControlRow {
   id: string; controlName: string; title: string | null; category: string | null; subCategory: string | null; scope: string | null;
   technicalType: string | null; productTeamFacing: string | null;
   review: { updateId: string; label: string; count: number } | null;
-  frameworkUpdates: FrameworkUpdate[];
+  frameworkUpdates: UpdateFlag[];
   inScope: boolean; inClientSelection: boolean;
   _count: { testProcedures: number; evidence: number; frameworkReferences: number; obligations: number };
 }
@@ -70,7 +63,7 @@ export function ControlRegister() {
     queryFn: () => apiGet<{
       frameworks: { family: string; controls: number; versions: { id: string; short: string; controls: number }[] }[];
       categories: { value: string; count: number }[]; scopes: { value: string; count: number }[]; prefixes: { value: string; count: number }[];
-      updates: (FrameworkUpdate & { controls: number })[];
+      updates: AppliedUpdate[];
       scope: { total: number; inScope: number; selection: number; selectionInScope: number };
     }>("/api/controls?view=facets"),
   });
@@ -110,14 +103,19 @@ export function ControlRegister() {
         );
       },
     },
-    { id: "controlName", header: "Control ID", size: 160, cell: ({ row }) => <span className={cn("flex flex-wrap items-center gap-2", !row.original.inScope && "opacity-50")}><Mono className="whitespace-nowrap font-medium text-fg">{row.original.controlName}</Mono>{row.original.inClientSelection && <Badge tone="outline" title="Listed on the workbook's client selection sheet (CCFv2)">Client selection</Badge>}{row.original.review && <Badge tone="warning" title={`${row.original.review.label}: ${row.original.review.count} mapping change(s) to review`}><GitCompareArrows /> Mapping affected</Badge>}</span> },
+    { id: "controlName", header: "Control ID", size: 160, cell: ({ row }) => <span className={cn("flex flex-wrap items-center gap-2", !row.original.inScope && "opacity-50")}><Mono className="whitespace-nowrap font-medium text-fg">{row.original.controlName}</Mono>{row.original.inClientSelection && <Badge tone="outline" title="Listed on the workbook's client selection sheet (CCFv2)">Client selection</Badge>}</span> },
     {
       id: "frameworkUpdate", header: "Framework update", size: 190, enableSorting: false,
       cell: ({ row }) => {
-        const us = [...row.original.frameworkUpdates].sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind));
+        const us = row.original.frameworkUpdates;
         if (!us.length) return <span className="text-xs text-subtle">—</span>;
-        const k = UPDATE_KIND[us[0].kind];
-        return <Badge tone={k.tone} title={us.map((u) => UPDATE_KIND[u.kind].line(u)).join("\n")}><BellRing /> {k.badge}{us.length > 1 ? ` · ${us.length} frameworks` : `: ${us[0].short}${us[0].to ? ` → ${us[0].to}` : ""}`}</Badge>;
+        return (
+          <span className="flex flex-col items-start gap-1">
+            {us.map((u) => u.state === "pending"
+              ? <Badge key={u.key} tone="warning" title={`Mapped to ${u.family} ${u.previous}; approve the move to ${u.current} in Change Analytics`}><BellRing /> {u.family} {u.previous} → {u.current}</Badge>
+              : <Badge key={u.key} tone="success" title={`Mapping approved: now points to ${u.family} ${u.current}`}><Check /> {u.family} {u.current}</Badge>)}
+          </span>
+        );
       },
     },
     { id: "title", header: "Control title", cell: ({ row }) => <div className={cn("line-clamp-2 text-fg", !row.original.inScope && "opacity-50")}>{row.original.title ?? <span className="text-subtle">No title</span>}</div> },
@@ -125,10 +123,10 @@ export function ControlRegister() {
   ], [canWrite, saving]);
   const scope = facets.data?.scope;
 
-  // Only updates the platform can act on: released and ready to install, or already in the library.
-  // Versions the publisher announced that the platform does not have yet are left out here.
-  const updates = (facets.data?.updates ?? []).filter((u) => u.kind !== "AVAILABLE");
-  const affected = updates.reduce((n, u) => Math.max(n, u.controls), 0);
+  // Framework updates applied in Sources. Yellow until every affected control's mapping is approved, then green.
+  const updates = facets.data?.updates ?? [];
+  const done = (u: AppliedUpdate) => u.approved >= u.affected;
+  const pending = updates.filter((u) => !done(u)).reduce((n, u) => n + u.affected - u.approved, 0);
   const active = !!(s.q || s.mapping || s.family || s.category || s.scope || s.prefix || s.inScope);
   const opts = (xs?: { value: string; count: number }[]) => (xs ?? []).map((x) => ({ value: x.value, label: x.value, hint: formatNumber(x.count) }));
 
@@ -164,33 +162,41 @@ export function ControlRegister() {
         ) : null}
       />
       {updates.length > 0 && (
-        <Card className="mb-4 border-warning/50">
+        <Card className={cn("mb-4", pending ? "border-warning/50" : "border-success/40")}>
           <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-            <BellRing className="size-4 text-warning" />
+            {pending ? <BellRing className="size-4 text-warning" /> : <Check className="size-4 text-success" />}
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold text-fg">Framework updates affect the client&apos;s controls</div>
-              <div className="text-xs text-muted">{updates.length} mapped framework(s) have a newer version in the platform; {affected > 0 && `up to ${formatNumber(affected)} control(s) need their mapping checked.`}</div>
+              <div className="text-[13px] font-semibold text-fg">{pending ? "Framework updates affect the client's controls" : "Client controls are on the latest framework versions"}</div>
+              <div className="text-xs text-muted">
+                {pending ? `${formatNumber(pending)} control mapping(s) await approval in ${TERMS.versionImpact}; until then they stay on the previous version.` : "Every affected control's mapping has been approved."}
+              </div>
             </div>
-            <Button size="sm" variant={s.mapping === "update" ? "primary" : "secondary"} onClick={() => set({ mapping: s.mapping === "update" ? "" : "update", frameworkId: "", family: "", page: "1" })}>
-              {s.mapping === "update" ? "Show all controls" : "Show affected controls"}
-            </Button>
+            {pending > 0 && (
+              <Button size="sm" variant={s.mapping === "update" ? "primary" : "secondary"} onClick={() => set({ mapping: s.mapping === "update" ? "" : "update", frameworkId: "", family: "", page: "1" })}>
+                {s.mapping === "update" ? "Show all controls" : "Show affected controls"}
+              </Button>
+            )}
           </div>
-          <ul className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
-            {updates.map((u) => (
-              <li key={u.frameworkId} className="flex flex-col gap-2 rounded-md border border-border bg-surface p-3 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-[13px] font-semibold text-fg">{u.short}</span>
-                  <Badge tone={UPDATE_KIND[u.kind].tone}>{UPDATE_KIND[u.kind].badge}</Badge>
-                </div>
-                <div className="text-fg-2">
-                  {u.from ?? "—"} <ArrowRight className="inline size-3" /> {u.kind === "NEWER_IN_LIBRARY" ? (u.latest ?? u.to ?? "newer") : (u.to ?? "new")}
-                </div>
-                <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-                  <button onClick={() => set({ mapping: "", family: "", frameworkId: u.frameworkId, page: "1" })} className="font-medium text-accent hover:underline">{formatNumber(u.controls)} control{u.controls === 1 ? "" : "s"}</button>
-                  <Link href={`/sources/${u.frameworkId}`} className="inline-flex items-center gap-1 text-muted hover:text-fg">{u.kind === "READY" ? "Install update" : "View source"} <ArrowRight className="size-3" /></Link>
-                </div>
-              </li>
-            ))}
+          <ul className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-4">
+            {updates.map((u) => {
+              const ok = done(u);
+              return (
+                <li key={u.key} className={cn("flex flex-col gap-2 rounded-md border p-3 text-xs transition-colors", ok ? "border-success/40 bg-success-soft" : "border-warning/50 bg-warning-soft")}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-[13px] font-semibold text-fg">{u.family}</span>
+                    <Badge tone={ok ? "success" : "warning"}>{ok ? "Updated" : "Approval pending"}</Badge>
+                  </div>
+                  <div className="font-medium text-fg-2">Newer version: {u.family} {u.previous} <ArrowRight className="inline size-3" /> {u.current}</div>
+                  <div className="text-muted">
+                    {u.uploadedAfter ? `Controls uploaded after the update map to ${u.current}` : `${formatNumber(u.approved)} of ${formatNumber(u.affected)} affected control${u.affected === 1 ? "" : "s"} approved`}
+                  </div>
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+                    <Link href={`/change-analytics?update=${u.key}`} className="font-medium text-fg underline-offset-2 hover:underline">{formatNumber(u.affected)} control{u.affected === 1 ? "" : "s"} affected</Link>
+                    <Link href={`/change-analytics?update=${u.key}`} className="inline-flex items-center gap-1 text-muted hover:text-fg">{ok ? "View" : "Review and approve"} <ArrowRight className="size-3" /></Link>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </Card>
       )}
@@ -242,10 +248,9 @@ export function ControlRegister() {
           <Select value={s.prefix} onChange={(v) => set({ prefix: v })} allLabel="All domains" placeholder="Domain" options={opts(facets.data?.prefixes)} aria-label="Filter by control domain" />
           <Select
             value={s.mapping === "review" ? "" : s.mapping} onChange={(v) => set({ mapping: v })} allLabel="Any mapping status" placeholder="Mapping status"
-            options={[{ value: "mapped", label: "Mapped" }, { value: "unmapped", label: "Unmapped" }, { value: "conflict", label: "Mapping conflict" }, { value: "update", label: "Framework update pending" }]}
+            options={[{ value: "mapped", label: "Mapped" }, { value: "unmapped", label: "Unmapped" }, { value: "conflict", label: "Mapping conflict" }, { value: "update", label: "Affected by a framework update" }]}
             aria-label="Filter by mapping status"
           />
-          <Button variant={s.mapping === "review" ? "primary" : "secondary"} size="sm" onClick={() => set({ mapping: s.mapping === "review" ? "" : "review", page: "1" })}><GitCompareArrows /> Needs review</Button>
           {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", mapping: "", family: "", frameworkId: "", category: "", scope: "", prefix: "", inScope: "" }); }}><X /> Clear</Button>}
         </div>
         <div className="px-4 py-2 text-xs text-muted tabular">{list.data ? `${formatNumber(list.data.total)} controls` : "…"}</div>

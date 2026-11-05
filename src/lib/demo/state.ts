@@ -1,0 +1,153 @@
+// Demonstration flow for framework updates, kept in one DemoState row so the demo can be run again and again.
+//
+//   Sources           four framework updates are offered (NIST CSF, CIS Controls, ISO/IEC 27001, ISO/IEC 27002).
+//                     Until one is applied the platform shows only the previous version; Update installs the newer
+//                     one, Reject leaves the update offered.
+//   Client controls   controls uploaded before an update keep pointing to the previous version until their mapping
+//                     is approved in Change Analytics; controls uploaded after it point straight to the new version.
+//   Rollback          returns to the demo-ready state: no update applied, nothing approved, no client controls.
+//
+// Both versions of each framework stay in the library; which one a page shows is decided here.
+import { prisma } from "@/lib/db";
+import { resetData } from "@/lib/ingest/reset";
+import { versionOf } from "@/lib/sources/previous-versions";
+import { affectedControlNames } from "@/lib/updates/reference-impact";
+
+/**
+ * The updates offered, with the publication date of the newer version. Frameworks with a monitoring connector (NIST CSF,
+ * EU AI Act) appear in Sources as "Update available" automatically. The others have no connector, so an admin first
+ * releases the newer version in the Admin console (`release: true`); users then see it in Sources.
+ */
+export const DEMO_UPDATES = [
+  { key: "nist-csf", family: "NIST CSF", previous: "1.1", current: "2.0", published: "2024-02-26", release: false },
+  { key: "cis-controls", family: "CIS Controls", previous: "8", current: "8.1", published: "2024-06-24", release: true },
+  { key: "iso-27001", family: "ISO/IEC 27001", previous: "2013", current: "2022", published: "2022-10-25", release: true },
+  { key: "iso-27002", family: "ISO/IEC 27002", previous: "2013", current: "2022", published: "2022-02-15", release: true },
+  { key: "eu-ai-act", family: "EU AI Act", previous: "2024", current: "2026", published: "2026-07-27", release: false },
+  { key: "csa-ccm", family: "CSA CCM", previous: "4.0", current: "4.1.1", published: "2026-01-27", release: true },
+] as const;
+export type DemoKey = (typeof DEMO_UPDATES)[number]["key"];
+export const DEMO_KEYS = DEMO_UPDATES.map((u) => u.key) as [DemoKey, ...DemoKey[]];
+
+export type UpdateStatus = "AVAILABLE" | "UPDATED" | "REJECTED";
+export interface DemoState {
+  updates: Partial<Record<DemoKey, { status: UpdateStatus; at: string }>>;
+  /** Per update: the client's controls were uploaded after it was applied, so they map straight to the new version. */
+  uploadedAfter: Partial<Record<DemoKey, boolean>>;
+  /** Per update: controls whose mapping to the new version was approved in Change Analytics. */
+  approved: Partial<Record<DemoKey, string[]>>;
+  /** Per update that needs it: released to users by an admin. */
+  released?: Partial<Record<DemoKey, boolean>>;
+}
+
+const KEY = "demo";
+/** A fresh demo-ready state (a new object each time, so updates never alter the default). */
+const empty = (): DemoState => ({ updates: {}, uploadedAfter: {}, approved: {}, released: {} });
+
+export async function getDemoState(): Promise<DemoState> {
+  const row = await prisma.demoState.findUnique({ where: { key: KEY } });
+  return { ...empty(), ...((row?.value ?? {}) as Partial<DemoState>) };
+}
+
+async function save(s: DemoState) {
+  const value = JSON.parse(JSON.stringify(s));
+  await prisma.demoState.upsert({ where: { key: KEY }, create: { key: KEY, value }, update: { value } });
+}
+
+export const statusOf = (s: DemoState, key: DemoKey): UpdateStatus => s.updates[key]?.status ?? "AVAILABLE";
+/** Users can apply the update in Sources (after the admin's release, where one is needed). */
+export const isReleased = (s: DemoState, key: DemoKey) => !DEMO_UPDATES.find((u) => u.key === key)?.release || !!s.released?.[key];
+
+/** Admin: release updates to users (or withdraw the release while they are still offered). */
+export async function releaseUpdates(keys: DemoKey[], released: boolean) {
+  const s = await getDemoState();
+  s.released = { ...s.released };
+  for (const k of keys) if (statusOf(s, k) !== "UPDATED") s.released[k] = released;
+  await save(s);
+}
+
+/** Installs the newer version of each framework. */
+export async function applyUpdates(keys: DemoKey[]) {
+  const s = await getDemoState();
+  for (const k of keys) s.updates[k] = { status: "UPDATED", at: new Date().toISOString() };
+  await save(s);
+}
+
+/** Declines an update; it stays offered (status "Update available") but is no longer selectable. */
+export async function rejectUpdates(keys: DemoKey[]) {
+  const s = await getDemoState();
+  for (const k of keys) if (statusOf(s, k) !== "UPDATED") s.updates[k] = { status: "REJECTED", at: new Date().toISOString() };
+  await save(s);
+}
+
+/** Moves the listed controls' mapping to the new version of an applied update. */
+export async function approveControls(key: DemoKey, controls: string[]) {
+  const s = await getDemoState();
+  if (statusOf(s, key) !== "UPDATED") throw new Error("Apply the update in Sources before approving mappings.");
+  s.approved[key] = [...new Set([...(s.approved[key] ?? []), ...controls])];
+  await save(s);
+}
+
+/** Called when the client's controls are (re)uploaded: they point to whichever version each framework is on now. */
+export async function recordControlUpload() {
+  const s = await getDemoState();
+  s.uploadedAfter = Object.fromEntries(DEMO_KEYS.map((k) => [k, statusOf(s, k) === "UPDATED"]));
+  s.approved = {};
+  await save(s);
+}
+
+/** Back to the demo-ready state: every update offered again, nothing approved, client controls removed. */
+export async function rollback(actor: string, role: string) {
+  await resetData(prisma, ["controls"], actor, role);
+  await save(empty());
+}
+
+/** Each update with the library documents of its previous and new version. */
+export async function demoFrameworks() {
+  const fws = await prisma.framework.findMany({
+    where: { family: { in: DEMO_UPDATES.map((u) => u.family) } },
+    select: { id: true, name: true, family: true, versionLabel: true },
+  });
+  // versionOf falls back to the version recorded for the document when its label is empty.
+  const find = (family: string, version: string) => fws.find((f) => f.family === family && (versionOf(f) ?? "").replace(/^v/i, "") === version)?.id ?? null;
+  return DEMO_UPDATES.map((u) => ({ ...u, previousId: find(u.family, u.previous), currentId: find(u.family, u.current) }));
+}
+
+/** Library documents not installed yet: the new version of each update that has not been applied. */
+export async function uninstalledVersions() {
+  const [s, fws] = await Promise.all([getDemoState(), demoFrameworks()]);
+  return fws.filter((u) => statusOf(s, u.key) !== "UPDATED" && u.currentId).map((u) => u.currentId!);
+}
+
+export type Highlight = "pending" | "updated";
+
+/**
+ * Which framework version each client control points to. `hidden` holds the documents a control must not show;
+ * `highlight` marks the documents of an applied update: "pending" (previous version, approval outstanding) and
+ * "updated" (new version, approved).
+ */
+export async function controlVersions() {
+  const [s, fws] = await Promise.all([getDemoState(), demoFrameworks()]);
+  const updates = await Promise.all(fws.map(async (u) => ({
+    ...u,
+    status: statusOf(s, u.key),
+    uploadedAfter: !!s.uploadedAfter[u.key],
+    approved: new Set(s.approved[u.key] ?? []),
+    affected: await affectedControlNames(u.key),
+  })));
+  const resolve = (controlName: string) => {
+    const hidden = new Set<string>(), highlight = new Map<string, Highlight>();
+    for (const u of updates) {
+      // Updates without test-procedure impact data (e.g. EU AI Act) leave each control on the version it is mapped to.
+      if (!u.previousId || !u.currentId || !u.affected.size) continue;
+      const onNew = u.status === "UPDATED" && (u.uploadedAfter || !u.affected.has(controlName) || u.approved.has(controlName));
+      hidden.add(onNew ? u.previousId : u.currentId);
+      if (u.status === "UPDATED" && !u.uploadedAfter && u.affected.has(controlName))
+        highlight.set(onNew ? u.currentId : u.previousId, onNew ? "updated" : "pending");
+    }
+    return { hidden, highlight };
+  };
+  /** Documents no control can point to: the new version of an update not yet applied. */
+  const hiddenEverywhere = new Set(updates.filter((u) => u.status !== "UPDATED" && u.currentId).map((u) => u.currentId!));
+  return { updates, resolve, hiddenEverywhere };
+}

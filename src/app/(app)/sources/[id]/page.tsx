@@ -1,24 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowRight, Bot, CheckCircle2, CircleDashed, ExternalLink, FlaskConical, GitCompareArrows, History, Layers, Radar, ShieldAlert, UserCheck } from "lucide-react";
+import { Bot, ExternalLink, GitCompareArrows, History, Layers, UserCheck } from "lucide-react";
 import { KeyValue, Mono, Page, PageHeader } from "@/components/common";
 import { LongText } from "@/components/long-text";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
-import { Badge, type Tone } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getSource } from "@/lib/queries/sources";
 import { getSession } from "@/lib/auth/server";
 import { BASIS_LABEL } from "@/lib/sources/applicability";
-import { REVIEW_STATUS } from "@/lib/sources/status";
-import { ReviewButtons } from "./review-buttons";
 import { VersionComparison } from "./version-comparison";
 import { UpdatePanel } from "./update-panel";
 import { TERMS } from "@/lib/terms";
-import { cn, formatDate, formatNumber, formatRelative } from "@/lib/utils";
+import { cn, formatDate, formatNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
-
-const PLACEHOLDER = "XX";
 
 function Placeholder({ children }: { children: React.ReactNode }) {
   return (
@@ -28,25 +24,14 @@ function Placeholder({ children }: { children: React.ReactNode }) {
   );
 }
 
-type StepState = "IMPLEMENTED" | "PROTOTYPE" | "NOT_CONNECTED" | "ATTENTION";
-const STEP: Record<StepState, { label: string; tone: Tone; icon: typeof CheckCircle2 }> = {
-  IMPLEMENTED: { label: "Implemented", tone: "success", icon: CheckCircle2 },
-  ATTENTION: { label: "Needs attention", tone: "warning", icon: ShieldAlert },
-  PROTOTYPE: { label: "Prototype", tone: "info", icon: FlaskConical },
-  NOT_CONNECTED: { label: "Not connected", tone: "neutral", icon: CircleDashed },
-};
-
 export default async function SourceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [d, session] = await Promise.all([getSource(id), getSession()]);
   if (!d) notFound();
-  const canWrite = session?.role === "admin" || session?.role === "analyst";
   const cmp = d.comparison?.identifiers.comparable ? d.comparison.identifiers : null;
 
-  const versionChange = d.updates.find((u) => u.changeType === "VERSION_CHANGE");
   const pendingUpdates = d.updates.filter((u) => u.reviewStatus === "NEW");
   const hasTransitions = Object.keys(d.transitions).length > 0;
-  const monitored = d.monitoring.length > 0;
 
   // Version history: versions in the library, plus versions detected by monitoring.
   const history = [
@@ -64,17 +49,6 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ i
     ["New domains", d.comparison ? String(d.comparison.domains.filter((x) => x.status === "ONLY_CURRENT").length) : null],
     ["Scope changes", null, "Summary to be supplied"],
     ["New regulatory expectations", null, "Summary to be supplied"],
-  ];
-
-  const pipeline: { title: string; state: StepState; detail: string }[] = [
-    { title: "Source monitoring", state: monitored ? "IMPLEMENTED" : "NOT_CONNECTED", detail: monitored ? `${d.monitoring.map((m) => m.name).join(", ")} · ${d.monitoring[0].lastCheckedAt ? `last checked ${formatRelative(d.monitoring[0].lastCheckedAt)}` : "configured, not checked yet"}` : "No connector for this document yet" },
-    { title: "Version change detection", state: !monitored ? "NOT_CONNECTED" : versionChange ? "ATTENTION" : "IMPLEMENTED", detail: versionChange ? `${versionChange.previousValue ?? "?"} → ${versionChange.newValue ?? "?"}` : !monitored ? "Requires monitoring" : d.monitoring[0].lastCheckedAt ? "No version change detected" : "Runs on the first check" },
-    { title: "Previous vs current comparison", state: hasTransitions || d.comparison ? "IMPLEMENTED" : "NOT_CONNECTED", detail: hasTransitions ? "From the supplied legacy-to-latest mapping file" : d.comparison ? `Structural comparison with ${d.previousVersion?.short} (both versions loaded)` : "Needs the previous version loaded, or a legacy-to-latest mapping file" },
-    { title: "AI-generated change summary", state: d.aiImport?.summary ? "IMPLEMENTED" : "NOT_CONNECTED", detail: d.aiImport?.summary ? `From AI document import of ${d.aiImport.fileName}, reviewed by ${d.aiImport.reviewedBy} on ${formatDate(d.aiImport.updatedAt)}` : "Available: upload the document under Data & Imports → AI document import" },
-    { title: "New or modified sections", state: hasTransitions || cmp ? "IMPLEMENTED" : "NOT_CONNECTED", detail: hasTransitions ? `${d.transitions.ADDED ?? 0} added · ${d.transitions.MODIFIED ?? 0} modified` : cmp ? `${cmp.added.length} new · ${cmp.changed.length} reworded · ${cmp.removed.length} no longer present (by identifier)` : "Requires comparison data" },
-    { title: "Potential impact indicators", state: d.clientControls ? "IMPLEMENTED" : "NOT_CONNECTED", detail: d.clientControls ? `${d.clientControls} client controls mapped to this document` : "No client controls mapped" },
-    { title: "Human review required", state: pendingUpdates.length ? "ATTENTION" : "IMPLEMENTED", detail: pendingUpdates.length ? `${pendingUpdates.length} finding(s) awaiting review` : "Nothing waiting for review" },
-    { title: "Approval status", state: d.updates.length ? (pendingUpdates.length ? "ATTENTION" : "IMPLEMENTED") : "NOT_CONNECTED", detail: d.updates.length ? `${d.updates.length - pendingUpdates.length} of ${d.updates.length} findings reviewed` : "No findings yet" },
   ];
 
   return (
@@ -156,62 +130,6 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ i
           </Card>
 
           {d.comparison && d.previousVersion && <VersionComparison c={d.comparison} previous={d.previousVersion} current={d.short} />}
-
-          {/* E. AI-assisted update intelligence */}
-          <Card>
-            <CardHeader title="Update intelligence" description="How changes to this document are detected and reviewed. Each step shows whether it is live today." icon={<Bot />} />
-            <ol className="divide-y divide-border">
-              {pipeline.map((p, i) => {
-                const st = STEP[p.state];
-                return (
-                  <li key={p.title} className="flex items-start gap-3 px-4 py-2.5">
-                    <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-surface-3 text-[11px] font-semibold text-fg-2">{i + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-medium text-fg">{p.title}</div>
-                      <div className="text-xs text-muted">{p.detail}</div>
-                    </div>
-                    <Badge tone={st.tone}><st.icon /> {st.label}</Badge>
-                  </li>
-                );
-              })}
-            </ol>
-            {d.updates.length > 0 && (
-              <div className="border-t border-border">
-                <div className="px-4 pt-3 text-[13px] font-semibold text-fg">Detected findings</div>
-                <ul className="divide-y divide-border">
-                  {d.updates.map((u) => {
-                    const r = REVIEW_STATUS[u.reviewStatus] ?? REVIEW_STATUS.NEW;
-                    return (
-                      <li key={u.id} className="flex flex-wrap items-start gap-3 px-4 py-2.5">
-                        <div className="min-w-0 flex-1">
-                          <Link href={`/updates?update=${u.id}`} className="text-[13px] font-medium text-fg hover:text-accent">{u.title}</Link>
-                          <div className="line-clamp-2 text-xs text-muted">{u.summary}</div>
-                          <div className="text-[11px] text-subtle">Detected {formatDate(u.detectedAt)} by {u.connector}</div>
-                        </div>
-                        <Badge tone={r.tone}>{r.label}</Badge>
-                        {u.reviewStatus === "NEW" && canWrite && <ReviewButtons id={u.id} />}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-            {versionChange && (
-              <div className="space-y-3 border-t border-border p-4">
-                <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                  <Badge tone="warning">Version change</Badge>
-                  <Mono>{versionChange.previousValue}</Mono><ArrowRight className="size-3.5 text-subtle" /><Mono>{versionChange.newValue}</Mono>
-                  <span className="text-xs text-muted">· detected {formatRelative(versionChange.detectedAt)}</span>
-                </div>
-                <p className="text-[13px] text-fg-2">{versionChange.summary}</p>
-                {!d.aiImport && <Placeholder>AI change analysis: upload the new version under Data & Imports → AI document import to extract its sections and generate a reviewed change summary.</Placeholder>}
-                <div className="flex flex-wrap gap-2">
-                  <Button asChild size="sm" variant="primary"><Link href={`/updates?update=${versionChange.id}`}><UserCheck /> Review and approve</Link></Button>
-                  <Button asChild size="sm"><Link href="/updates"><Radar /> {TERMS.updates}</Link></Button>
-                </div>
-              </div>
-            )}
-          </Card>
         </div>
 
         <div className="space-y-4">

@@ -18,7 +18,8 @@ interface ImpactData {
   updates: { key: string; family: string; previous: string; current: string; sheet: string; changed: [string, string, number[], number[]][] }[];
 }
 
-export interface ImpactSection { doc: string; identifier: string; title: string }
+/** `id` is the section's Source Section ID in the library, used to open its full detail. */
+export interface ImpactSection { id: string; doc: string; identifier: string; title: string }
 export interface ImpactSummary {
   key: string; family: string; previous: string; current: string;
   changedTestProcedures: number; totalTestProcedures: number; affectedControls: number; totalControls: number;
@@ -42,6 +43,12 @@ export async function listReferenceImpact(): Promise<ImpactSummary[]> {
   return data.updates.map((u) => summarise(data, u));
 }
 
+/** Client controls with at least one changed test procedure in an update. */
+export async function affectedControlNames(key: string) {
+  const u = (await load()).updates.find((x) => x.key === key);
+  return new Set(u?.changed.map((c) => c[0]) ?? []);
+}
+
 /** One update in full: the affected controls, their changed test procedures, and what moved in each mapping. */
 export async function referenceImpactDetail(key: string) {
   const data = await load();
@@ -49,7 +56,7 @@ export async function referenceImpactDetail(key: string) {
   if (!u) return null;
   const section = (id: number): ImpactSection => {
     const s = data.sections[String(id)];
-    return s ? { doc: data.docs[s[0]] ?? "", identifier: s[1], title: s[2] } : { doc: "", identifier: String(id), title: "" };
+    return s ? { id: String(id), doc: data.docs[s[0]] ?? "", identifier: s[1], title: s[2] } : { id: String(id), doc: "", identifier: String(id), title: "" };
   };
   const byControl = new Map<string, { id: string; text: string; removed: ImpactSection[]; added: ImpactSection[] }[]>();
   for (const [control, tp, removed, added] of u.changed) {

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ClipboardCheck, FileCheck2, FileText, GitBranch, ChevronRight, Link2, Search, Table2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -99,7 +100,7 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-b border-border last:border-0 hover:bg-surface-2">
+                <tr key={r.id} className={cn("border-b border-border last:border-0 hover:bg-surface-2", c.versionFlags[r.framework.id] === "pending" && "bg-warning-soft", c.versionFlags[r.framework.id] === "updated" && "bg-success-soft")}>
                   <td className="whitespace-nowrap px-4 py-2 text-fg-2">{r.framework.short}</td>
                   <td className="px-3 py-2"><Link href={`/citations?citation=${r.sourceSectionId}`} className="font-mono text-xs text-accent hover:underline">{r.sourceSectionId}</Link></td>
                   <td className="px-3 py-2 text-[13px] text-fg">{r.sectionName}</td>
@@ -118,7 +119,7 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
 
 type FrameworkGroup = ControlDetail["procedureTrace"][number]["frameworks"][number];
 
-function FrameworkBlock({ fw }: { fw: FrameworkGroup }) {
+function FrameworkBlock({ fw, flag }: { fw: FrameworkGroup; flag?: "pending" | "updated" }) {
   const list = (
     <ul className="space-y-1">
       {fw.obligations.map((o) => (
@@ -132,9 +133,13 @@ function FrameworkBlock({ fw }: { fw: FrameworkGroup }) {
   );
   const n = fw.obligations.length;
   return (
-    <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
+    <div className={cn("rounded-md border px-3 py-2", flag === "pending" ? "border-warning/60 bg-warning-soft" : flag === "updated" ? "border-success/50 bg-success-soft" : "border-border bg-surface-2")}>
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <Link href={`/frameworks/${fw.id}`} className="text-[13px] font-semibold text-fg hover:text-accent">{fw.short}</Link>
+        <span className="flex items-center gap-2">
+          <Link href={`/frameworks/${fw.id}`} className="text-[13px] font-semibold text-fg hover:text-accent">{fw.short}</Link>
+          {flag === "pending" && <Badge tone="warning">Approval pending</Badge>}
+          {flag === "updated" && <Badge tone="success">Updated</Badge>}
+        </span>
         <span className="text-[11px] text-muted">{n} obligation{n === 1 ? "" : "s"}</span>
       </div>
       {n < COLLAPSE_AT ? list : (
@@ -168,7 +173,7 @@ function ClientControl({ c }: { c: ControlDetail }) {
             </div>
             {t.frameworks.length === 0 && <p className="text-xs text-warning">No obligation mapped to this test procedure.</p>}
             <div className="space-y-2 border-l-2 border-border pl-4">
-              {t.frameworks.map((fw) => <FrameworkBlock key={fw.id} fw={fw} />)}
+              {t.frameworks.map((fw) => <FrameworkBlock key={fw.id} fw={fw} flag={c.versionFlags[fw.id]} />)}
             </div>
           </section>
         ))}
@@ -176,7 +181,7 @@ function ClientControl({ c }: { c: ControlDetail }) {
           <section className="space-y-2">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Control-level mapping (no test procedure)</div>
             <div className="space-y-2 border-l-2 border-border pl-4">
-              {c.controlLevel.map((fw) => <FrameworkBlock key={fw.id} fw={fw} />)}
+              {c.controlLevel.map((fw) => <FrameworkBlock key={fw.id} fw={fw} flag={c.versionFlags[fw.id]} />)}
             </div>
           </section>
         )}

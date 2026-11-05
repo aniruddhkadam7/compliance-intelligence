@@ -30,7 +30,12 @@ export function buildTrace(c: ControlDetail, expanded: ReadonlySet<string> = new
       const group = `${b.key}:${fw.id}`;
       const f = `f:${group}`;
       const n = fw.obligations.length;
-      nodes.push({ id: f, kind: "framework", label: fw.short, sublabel: `${n} obligation${n === 1 ? "" : "s"}`, href: `/frameworks/${fw.id}` });
+      const flag = c.versionFlags[fw.id];
+      nodes.push({
+        id: f, kind: "framework", label: fw.short, href: `/frameworks/${fw.id}`,
+        sublabel: `${n} obligation${n === 1 ? "" : "s"}${flag === "pending" ? " · approval pending" : flag === "updated" ? " · updated" : ""}`,
+        tone: flag === "pending" ? "warning" : flag === "updated" ? "success" : undefined,
+      });
       edges.push({ from: tp, to: f });
       if (n >= COLLAPSE_AT && !expanded.has(group)) {
         const more = `m:${group}`;

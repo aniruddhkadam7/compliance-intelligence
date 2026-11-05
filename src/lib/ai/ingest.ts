@@ -81,9 +81,15 @@ export async function startIngestion(file: { name: string; buffer: Buffer; kind:
     // "Upload New Version" for a chosen framework: compare with it, and flag (not trust) any mismatch.
     const fw = await prisma.framework.findUniqueOrThrow({ where: { id: target.frameworkId }, select: { id: true, family: true, versionLabel: true, name: true } });
     const same = versionKey(fw.versionLabel) && versionKey(fw.versionLabel) === versionKey(libraryVersion);
+    const identified = match;
     match = { matchFrameworkId: fw.id, matchKind: same ? "SAME_VERSION" : "NEW_VERSION" } as typeof match;
     checks.targetFramework = fw.name;
     checks.familyMatches = detected.libraryFamily === fw.family;
+    // A different document than the one chosen: keep what it was identified as, so the reviewer can switch to it.
+    if (!checks.familyMatches) {
+      const other = identified.matchFrameworkId ? await prisma.framework.findUnique({ where: { id: identified.matchFrameworkId }, select: { id: true, name: true } }) : null;
+      checks.identifiedAs = { frameworkId: other?.id ?? null, name: other?.name ?? (detected.shortTitle || detected.title), matchKind: identified.matchKind };
+    }
     if (target.expectedVersion) {
       checks.expectedVersion = target.expectedVersion;
       checks.versionMatchesExpected = !!versionKey(libraryVersion) && versionKey(libraryVersion) === versionKey(target.expectedVersion);
@@ -499,6 +505,41 @@ export async function publishIngestion(id: string, input: PublishInput, actor: s
 }
 
 /** Reviewer asks for the comparison and summary to be run again (status stays awaiting review). */
+type Identified = { frameworkId: string | null; name: string; matchKind: "SAME_VERSION" | "NEW_VERSION" | "NEW_DOCUMENT" };
+
+/** What an uploaded file was identified as in the library (worked out again for drafts stored before this was recorded). */
+export async function identifiedDocument(detected: unknown): Promise<Identified | null> {
+  const det = (detected ?? {}) as Detected & { libraryVersion?: string; checks?: Record<string, unknown> };
+  if (det.checks?.familyMatches !== false) return null;
+  if (det.checks.identifiedAs) return det.checks.identifiedAs as Identified;
+  const m = await matchLibrary(det, det.libraryVersion ?? det.version);
+  const fw = m.matchFrameworkId ? await prisma.framework.findUnique({ where: { id: m.matchFrameworkId }, select: { id: true, name: true } }) : null;
+  return { frameworkId: fw?.id ?? null, name: fw?.name ?? (det.shortTitle || det.title), matchKind: m.matchKind };
+}
+
+/**
+ * The uploaded file is a different document than the one chosen for the upload: compare it with the library document
+ * it was identified as instead (or treat it as a new document when it is not in the library).
+ */
+export async function switchToIdentifiedDocument(id: string, actor: string) {
+  const ing = await prisma.aiIngestion.findUnique({ where: { id }, select: { status: true, detected: true } });
+  if (!ing) throw new HttpError(404, "Draft not found.");
+  if (ing.status !== "READY") throw new HttpError(409, "Only a draft awaiting review can be changed.");
+  const det = (ing.detected ?? {}) as { checks?: Record<string, unknown> };
+  if (det.checks?.familyMatches !== false) throw new HttpError(409, "This draft already matches the document it was uploaded for.");
+  const other = (await identifiedDocument(ing.detected))!;
+  // The expected-version check belonged to the document first chosen; it no longer applies.
+  const { expectedVersion: _e, versionMatchesExpected: _v, identifiedAs: _i, ...rest } = det.checks!;
+  void _e; void _v; void _i;
+  const checks = { ...rest, targetFramework: other.name, familyMatches: true, switchedFrom: det.checks!.targetFramework };
+  await prisma.aiIngestion.update({
+    where: { id },
+    data: { matchFrameworkId: other.frameworkId, matchKind: other.frameworkId ? other.matchKind : "NEW_DOCUMENT", detected: json({ ...det, checks }) },
+  });
+  await prisma.auditLog.create({ data: { actor, action: "AI_IMPORT_RETARGETED", entity: "AiIngestion", entityId: id, details: { from: String(det.checks!.targetFramework ?? ""), to: other.name } } });
+  return finalize(id);
+}
+
 export async function reprocess(id: string, actor: string) {
   const ing = await prisma.aiIngestion.findUnique({ where: { id }, select: { status: true } });
   if (!ing) throw new HttpError(404, "Draft not found.");
