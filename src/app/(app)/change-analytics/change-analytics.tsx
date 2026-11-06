@@ -412,7 +412,7 @@ function AffectedControls({ d, selected, set, approve, reject, reconsider, runni
       <Card className="self-start">
         <CardHeader
           title={`Affected controls (${d.controls.length} of ${filtered ? d.affectedControls : d.totalControls})`}
-          description={mode ? "Select controls to approve, or approve one at a time" : "Select a control to see what changed"}
+          description={mode ? "Click any control to inspect what changed, then approve or reject it" : "Click any control to inspect what changed"}
           actions={mode && open_.length > 0 && (
             <span className="flex gap-1.5">
               <Button size="sm" disabled={running || !picked.size} onClick={() => runReject([...picked])}><X /> Reject{picked.size ? ` (${picked.size})` : ""}</Button>
@@ -435,8 +435,8 @@ function AffectedControls({ d, selected, set, approve, reject, reconsider, runni
                 {mode && (ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" /> : no ? <X className="mt-0.5 size-4 shrink-0 text-warning" /> : (
                   <input type="checkbox" aria-label={`Select ${c.controlName}`} className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[#2e2e38]" checked={picked.has(c.controlName)} onChange={() => toggle(c.controlName)} />
                 ))}
-                <button onClick={() => set({ control: c.controlName })} className="min-w-0 flex-1 text-left">
-                  <div className="font-mono font-medium text-fg">{c.controlName}</div>
+                <button onClick={() => set({ control: c.controlName })} className="group min-w-0 flex-1 text-left">
+                  <div className="font-mono font-medium text-fg underline-offset-2 group-hover:text-accent group-hover:underline">{c.controlName}</div>
                   {c.title && <div className="line-clamp-2 text-muted">{c.title}</div>}
                   <div className="mt-1"><Badge tone={ok && approving(d) ? "success" : d.uploadedAfter ? "neutral" : "warning"}>{c.changed.length} of {c.totalTestProcedures} changed{d.status === "UPDATED" && d.uploadedAfter ? " · mapped on upload" : ""}</Badge></div>
                 </button>
@@ -491,7 +491,7 @@ function AffectedControls({ d, selected, set, approve, reject, reconsider, runni
           <div className="divide-y divide-border">
             {open.changed.map((tp) => (
               <div key={tp.id} className="p-4">
-                <button onClick={() => setPanel({ kind: "tp", control: open.controlName, tp })} title="Open test procedure details" className="mb-2 flex w-full items-start gap-2 rounded text-left hover:bg-surface-2">
+                <button onClick={() => setPanel({ kind: "tp", control: open.controlName, tp })} title="Open this test procedure" className="mb-2 flex w-full items-start gap-2 rounded text-left hover:bg-surface-2">
                   <Mono className="whitespace-nowrap text-xs font-medium text-fg">{tp.id}</Mono>
                   <p className="line-clamp-3 flex-1 text-xs text-muted">{tp.text}</p>
                   <ArrowRight className="mt-0.5 size-3.5 shrink-0 text-subtle" />

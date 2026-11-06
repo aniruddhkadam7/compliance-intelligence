@@ -160,7 +160,7 @@ export function FrameworkRepository() {
           />
           {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", type: "", jurisdiction: "", group: "", versions: "" }); }}><X /> Clear</Button>}
         </div>
-        <div className="px-4 py-2 text-xs text-muted tabular">{rows.length} versions · {formatNumber(rows.reduce((t, r) => t + r.citations, 0))} obligations · select a row for its detail</div>
+        <div className="px-4 py-2 text-xs text-muted tabular">{rows.length} versions · {formatNumber(rows.reduce((t, r) => t + r.citations, 0))} obligations<span className="text-muted"> · </span><span className="text-accent">click any framework to inspect its sections and mapped controls</span></div>
         <DataTable
           columns={columns}
           data={data ? rows : undefined}

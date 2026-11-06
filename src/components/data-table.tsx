@@ -85,13 +85,15 @@ export function DataTable<T>({
                   key={row.id}
                   onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                   className={cn(
-                    "border-b border-border last:border-0 transition-colors",
+                    "group border-b border-border last:border-0 transition-colors",
                     onRowClick && "cursor-pointer hover:bg-surface-2",
                     selectedKey === row.id && "bg-accent-soft/60 hover:bg-accent-soft/60",
                   )}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className={cn("px-3 align-top text-[13px] first:pl-4 last:pr-4", dense ? "py-1.5" : "py-2.5")}>
+                    <td key={cell.id} className={cn("px-3 align-top text-[13px] first:pl-4 last:pr-4", dense ? "py-1.5" : "py-2.5",
+                      // A clickable row underlines its first cell (the name or ID) on hover, as links do.
+                      onRowClick && "first:group-hover:underline first:group-hover:underline-offset-2")}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}

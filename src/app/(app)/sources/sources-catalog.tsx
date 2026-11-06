@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, BellRing, BookOpenText, Check, Download, ExternalLink, Globe, Library, Loader2, RefreshCw, ScanSearch, Search, X } from "lucide-react";
+import { ArrowRight, BellRing, BookOpenText, Check, Download, ExternalLink, Globe, Info, Library, Loader2, RefreshCw, ScanSearch, Search, X } from "lucide-react";
 import { useProgressSteps, type ProgressStep } from "@/components/progress-steps";
 import { EmptyState, Mono, Page, PageHeader, StatStrip } from "@/components/common";
 import { Card } from "@/components/ui/card";
@@ -224,6 +224,8 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
       return null;
     };
   }, [docs, summaries]);
+  /** The platform has the newer version: it is offered as an update (from the library or a connector) or already installed. */
+  const hasNewVersion = (r: Row) => (!!r.offer && !r.found) || r.u?.status === "UPDATED";
   // A framework is connected when a monitoring connector watches any version of it.
   const connectorsOf = (d: SourceRow) => {
     const seen = new Map<string, SourceRow["monitoring"][number]>();
@@ -337,7 +339,7 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
               <Select value={s.source} onChange={(v) => set({ source: v })} allLabel="Any monitoring" options={[{ value: "connected", label: "Monitored by a connector", hint: connectedCount }, { value: "manual", label: "Not monitored", hint: rowsAll.length - connectedCount }]} aria-label="Monitoring" />
               {active && <Button variant="ghost" size="sm" onClick={() => set({ q: "", type: "", publisher: "", applicability: "", status: "", source: "" })}><X /> Clear</Button>}
             </div>
-            <div className="px-4 py-2 text-xs text-muted tabular">{s.source === "connected" ? `${rows.length} connectors` : `${rows.length} of ${rowsAll.length} documents`} · select a name for details</div>
+            <div className="px-4 py-2 text-xs text-muted tabular">{s.source === "connected" ? `${rows.length} connectors` : `${rows.length} of ${rowsAll.length} documents`}<span className="text-muted"> · </span><span className="text-accent">click any framework or document to inspect its details</span>. Hover <Info className="inline size-3 align-[-2px]" /> next to a new version for what changed.</div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
@@ -372,7 +374,9 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
                           )}
                         </td>
                         <td className="min-w-[220px] px-3 py-2.5">
-                          <Link href={`/sources/${d.id}`} className="font-medium text-fg hover:text-accent hover:underline">{d.short}</Link>
+                          <span className="inline-flex items-center gap-1.5">
+                            <Link href={`/sources/${d.id}`} className="font-medium text-fg hover:text-accent hover:underline">{d.short}</Link>
+                          </span>
                           <div className="line-clamp-1 text-[11px] text-muted">{d.publisher} · <Mono className="text-[11px]">{d.sourceId}</Mono> · {formatNumber(d.obligations)} requirements</div>
                         </td>
                         <td className="px-3 py-2.5 text-xs text-fg-2">{d.type ?? "—"}</td>
@@ -381,9 +385,14 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
                         </td>
                         <td className="px-3 py-2.5 text-xs">
                           {r.latest ? (
-                            <Tooltip content={summaryOf(d) && <SummaryCard s={summaryOf(d)!} />} className="max-w-md px-3 py-2">
-                              <span className={cn(r.status === "AVAILABLE" && !r.rejected ? "font-semibold text-warning" : "text-fg-2", summaryOf(d) && "cursor-help underline decoration-dotted underline-offset-2")}>{r.latest}</span>
-                            </Tooltip>
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className={cn(r.status === "AVAILABLE" && !r.rejected ? "font-semibold text-warning" : "text-fg-2")}>{r.latest}</span>
+                              {hasNewVersion(r) && summaryOf(d) && (
+                                <Tooltip content={<SummaryCard s={summaryOf(d)!} />} className="max-w-md px-3 py-2">
+                                  <button type="button" aria-label={`What changed: ${summaryOf(d)!.legacy} to ${summaryOf(d)!.latest}`} className="grid size-4 place-items-center rounded-full text-muted hover:text-accent"><Info className="size-3.5" /></button>
+                                </Tooltip>
+                              )}
+                            </span>
                           ) : <span className="text-subtle">—</span>}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-xs text-fg-2">{r.published ? formatDate(r.published) : <span className="text-subtle">—</span>}</td>

@@ -2,14 +2,15 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCircle2, Eye, History, Loader2, RotateCcw, Send, Undo2, Upload } from "lucide-react";
+import { CheckCircle2, Eye, FolderOpen, History, Loader2, RotateCcw, Save, Send, Undo2, Upload } from "lucide-react";
 import { EmptyState, Mono, Page, PageHeader, StatStrip } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Dot } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { apiSend } from "@/lib/client/api";
+import { Input } from "@/components/ui/input";
+import { apiGet, apiSend } from "@/lib/client/api";
 import { UPDATE_CHECK } from "@/lib/updates/labels";
 import { cn, formatNumber, formatRelative } from "@/lib/utils";
 import type { SourceRow } from "@/lib/queries/sources";
@@ -170,8 +171,39 @@ export function AdminConsole({ docs, quality, releases }: { docs: SourceRow[]; q
       <p className="mt-3 text-[11px] text-subtle">
         Releasing does not change the library. A user clicks Update to install the new version; the previous version stays in the library, client mappings get change proposals, and the publisher is checked again.
       </p>
+      <UploadFolderSetting />
       <PreviousVersionRecords />
     </Page>
+  );
+}
+
+/** The shared SharePoint folder that upload screens link to ("Open shared upload folder"). */
+function UploadFolderSetting() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["upload-folder"], queryFn: () => apiGet<{ url: string | null }>("/api/settings/upload-folder") });
+  const [value, setValue] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const current = value ?? q.data?.url ?? "";
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await apiSend<{ url: string | null }>("/api/settings/upload-folder", { url: current.trim() || null }, "PUT");
+      toast.success(r.url ? "Shared upload folder saved. Upload screens now open it." : "Shared upload folder link removed");
+      setValue(null);
+      await qc.invalidateQueries({ queryKey: ["upload-folder"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save the link");
+    } finally { setBusy(false); }
+  };
+  return (
+    <Card className="mt-4 flex flex-wrap items-center gap-3 p-4">
+      <div className="min-w-[260px] flex-1 text-[13px]">
+        <div className="flex items-center gap-1.5 font-medium text-fg"><FolderOpen className="size-4 text-muted" /> Shared upload folder</div>
+        <div className="text-xs text-muted">SharePoint folder holding the file to upload. Every upload screen shows an &ldquo;Open shared upload folder&rdquo; button that opens it.</div>
+      </div>
+      <Input value={current} onChange={(e) => setValue(e.target.value)} placeholder="https://…sharepoint.com/…" className="min-w-[320px] flex-1" aria-label="Shared upload folder link" />
+      <Button size="sm" variant="primary" disabled={busy || q.isLoading || current.trim() === (q.data?.url ?? "")} onClick={save}>{busy ? <Loader2 className="animate-spin" /> : <Save />} Save</Button>
+    </Card>
   );
 }
 

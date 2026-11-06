@@ -30,13 +30,14 @@ function heat(n: number, max: number): React.CSSProperties {
 
 /**
  * Framework traceability, from supplied relationship files only (nothing is inferred).
- *   Relation Matrix every framework against every other: the number of mapped relationships in each cell.
- *   Relation Graph  any two frameworks: baseline and target, the graph, and the mapped controls side by side.
+ *   Relationship Matrix every framework against every other: the number of mapped relationships in each cell.
+ *   Relationship Graph  any two frameworks: baseline and target, the graph, and the mapped controls side by side.
  * Kept separate from client control traceability (control → test procedures → obligations), on the control pages.
  */
 export function MappingExplorer() {
-  const [s, set] = useUrlState({ a: "", b: "", view: "overview" });
-  const view = s.view === "graph" ? "graph" : "overview";
+  // The Relationship Graph is the first and default view; the full matrix is the second.
+  const [s, set] = useUrlState({ a: "", b: "", view: "graph" });
+  const view = s.view === "overview" ? "overview" : "graph";
 
   const docs = useQuery({ queryKey: ["frameworks", "", "", "", ""], queryFn: () => apiGet<{ items: Doc[] }>("/api/frameworks") });
   const pairs = useQuery({ queryKey: ["fm-pairs", "supplied"], queryFn: () => apiGet<Pair[]>(`/api/framework-matrix${qs({ basis: "supplied" })}`) });
@@ -57,8 +58,8 @@ export function MappingExplorer() {
       <PageHeader title={TERMS.frameworkMapping} description="How the frameworks relate: requirement-to-requirement relationships stated in the supplied relationship files. Nothing is inferred." />
       <Tabs value={view} onValueChange={(v) => set({ view: v })}>
         <TabsList className="mb-4">
-          <TabsTrigger value="overview"><Grid3x3 /> Relation Matrix</TabsTrigger>
-          <TabsTrigger value="graph"><Share2 /> Relation Graph</TabsTrigger>
+          <TabsTrigger value="graph"><Share2 /> Relationship Graph</TabsTrigger>
+          <TabsTrigger value="overview"><Grid3x3 /> Relationship Matrix</TabsTrigger>
         </TabsList>
 
         {loading ? <Skeleton className="h-[420px]" /> : error ? (
@@ -93,6 +94,7 @@ function Matrix({ docs, label, count, onOpen }: { docs: Doc[]; label: (d: Doc) =
   const line = (r: string, c: string) => (hot && (hot.r === r || hot.c === c) ? "bg-accent-soft" : "");
   return (
     <Card>
+      <div className="border-b border-border px-4 py-2 text-xs text-accent">Click any number to inspect the relationships between those two frameworks</div>
       <div className="max-h-[calc(100vh-13rem)] overflow-auto" onMouseLeave={() => setHot(null)}>
         <table className="border-separate border-spacing-0 text-[11px]" aria-label="Framework relationship matrix">
           <thead>

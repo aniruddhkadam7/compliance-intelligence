@@ -13,6 +13,7 @@ import { ApiError, apiSend } from "@/lib/client/api";
 import { cn, formatNumber } from "@/lib/utils";
 import { ISSUE_LABELS } from "@/lib/labels";
 import { ClientControlActions } from "@/components/client-control-actions";
+import { UploadFromCloud } from "@/components/upload-folder-link";
 
 type Kind = "LIBRARY" | "CLIENT_CONTROLS" | "RELATIONSHIPS";
 
@@ -131,6 +132,8 @@ export function ImportWizard() {
               </button>
             ))}
           </div>
+          {/* Two ways to get the file: from this computer, or from the shared Microsoft 365 folder. */}
+          <div className="grid gap-3 md:grid-cols-2">
           <label
             onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
             onDragLeave={() => setDrag(false)}
@@ -138,10 +141,12 @@ export function ImportWizard() {
             className={cn("flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed px-6 py-8 text-center transition-colors", drag ? "border-accent bg-accent-soft/40" : "border-border-strong bg-surface-2 hover:bg-surface-3")}
           >
             {busy === "preview" ? <Loader2 className="size-5 animate-spin text-accent" /> : <UploadCloud className="size-5 text-muted" />}
-            <div className="text-[13px] font-medium text-fg">{busy === "preview" ? `Analysing ${file?.name}…` : file ? file.name : "Drop an .xlsx file here or click to browse"}</div>
+            <div className="text-[13px] font-medium text-fg">{busy === "preview" ? `Analysing ${file?.name}…` : file ? file.name : "From your computer: drop an .xlsx file here or click to browse"}</div>
             <div className="text-xs text-muted">{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : "Worksheets are inspected, headers detected and every row validated before anything is written."}</div>
             <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" disabled={!!busy} onChange={(e) => { const f = e.target.files?.[0]; if (f) analyse(f); }} />
           </label>
+          <UploadFromCloud />
+          </div>
         </CardBody>
       </Card>
 

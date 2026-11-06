@@ -88,6 +88,9 @@ export function ControlRegister() {
     },
     { id: "title", header: "Control title", cell: ({ row }) => <div className="line-clamp-2 text-fg">{row.original.title ?? <span className="text-subtle">No title</span>}</div> },
   ], []);
+  // The Framework update column is empty until an update is applied in Sources, so it is shown only then.
+  const hasUpdates = (facets.data?.updates.length ?? 0) > 0;
+  const shownColumns = useMemo(() => (hasUpdates ? columns : columns.filter((c) => c.id !== "frameworkUpdate")), [columns, hasUpdates]);
 
   // Framework updates applied in Sources. Yellow until every affected control's mapping is approved, then green.
   const updates = facets.data?.updates ?? [];
@@ -196,9 +199,9 @@ export function ControlRegister() {
           />
           {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", mapping: "", family: "", frameworkId: "", category: "", scope: "", prefix: "", inScope: "" }); }}><X /> Clear</Button>}
         </div>
-        <div className="px-4 py-2 text-xs text-muted tabular">{list.data ? `${formatNumber(list.data.total)} controls` : "…"}</div>
+        <div className="px-4 py-2 text-xs text-muted tabular">{list.data ? `${formatNumber(list.data.total)} controls` : "…"}<span className="text-muted"> · </span><span className="text-accent">click any control to inspect its test procedures and mapped obligations</span></div>
         <DataTable
-          columns={columns}
+          columns={shownColumns}
           data={list.data?.items}
           total={list.data?.total}
           page={page}

@@ -5,6 +5,7 @@ import { ExternalLink, FileUp, Loader2, ShieldAlert } from "lucide-react";
 import { Mono, Page, PageHeader } from "@/components/common";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { UploadFolderLink } from "@/components/upload-folder-link";
 import { apiSend } from "@/lib/client/api";
 import { useUrlState } from "@/lib/client/hooks";
 import { formatDateTime } from "@/lib/utils";
@@ -59,6 +60,7 @@ export function UploadNewVersion({ framework, check, expected, sourcesLabel }: P
             <CardBody className="space-y-3">
               <input ref={input} type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block text-[13px] file:mr-3 file:rounded-md file:border file:border-border file:bg-surface-2 file:px-3 file:py-1.5 file:text-[13px] file:text-fg" aria-label="Official document" />
               <Button variant="primary" disabled={!file || busy} onClick={analyse}>{busy ? <Loader2 className="animate-spin" /> : <FileUp />} {busy ? "Identifying the document…" : "Analyse document"}</Button>
+              <UploadFolderLink className="ml-2" />
               <p className="flex items-start gap-1.5 text-xs text-muted"><ShieldAlert className="mt-0.5 size-3.5 shrink-0" />The document text is sent to the configured AI service for analysis. Upload only documents you are permitted to process with it. Text inside the document is treated as data, never as instructions.</p>
             </CardBody>
           </Card>

@@ -75,6 +75,7 @@ export function FrameworkTabs({ frameworkId, overview }: { frameworkId: string; 
       <TabsContent value="controls">
         <Card>
           {searchBox("Search controls…")}
+          <div className="px-4 py-2 text-xs text-accent">Click any control to inspect it</div>
           <DataTable
             columns={controlCols}
             data={controls.data?.items}

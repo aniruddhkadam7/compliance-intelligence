@@ -9,6 +9,7 @@ import { EmptyState, ErrorState, Mono, StatStrip } from "@/components/common";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Badge, type Tone } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { UploadFolderLink } from "@/components/upload-folder-link";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -94,6 +95,7 @@ export function AiImport({ draftId, onOpen }: { draftId: string; onOpen: (id: st
             <CardBody className="flex flex-wrap items-center gap-3">
               <input ref={input} type="file" accept=".pdf,.xlsx,.txt,.md,.csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-[13px] file:mr-3 file:rounded-md file:border file:border-border file:bg-surface-2 file:px-3 file:py-1.5 file:text-[13px] file:text-fg" aria-label="Document file" />
               <Button variant="primary" disabled={!file || busy} onClick={start}>{busy ? <Loader2 className="animate-spin" /> : <UploadCloud />} {busy ? "Identifying…" : "Read with AI"}</Button>
+              <UploadFolderLink />
             </CardBody>
           </Card>
           <Card>

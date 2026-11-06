@@ -10,7 +10,7 @@ export const TERMS = {
   sourceDetails: "Source Details",
   obligations: "Obligation Explorer",
   obligation: "Obligation",
-  frameworkMapping: "Framework Matrix", // previously "Framework Mapping"
+  frameworkMapping: "Framework Relationships", // previously "Framework Matrix", before that "Framework Mapping"
   clientControls: "Custom Control Mapping", // previously "Client Control Mapping"
   versionImpact: "Change Analytics", // previously "Version Impact"
   data: "Data & Imports",
