@@ -13,7 +13,7 @@ export function Tooltip({
     <T.Root delayDuration={250}>
       <T.Trigger asChild>{children}</T.Trigger>
       <T.Portal>
-        <T.Content side={side} sideOffset={6} className={cn("z-50 max-w-xs rounded-md bg-fg px-2 py-1 text-[11px] leading-snug text-bg shadow-pop", className)}>
+        <T.Content side={side} sideOffset={6} className={cn("z-50 max-w-xs rounded-md border border-border bg-surface px-2 py-1 text-[11px] leading-snug text-fg shadow-pop", className)}>
           {content}
         </T.Content>
       </T.Portal>
