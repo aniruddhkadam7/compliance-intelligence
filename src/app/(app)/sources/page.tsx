@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { listSources } from "@/lib/queries/sources";
 import { demoFrameworks, getDemoState, isReleased, statusOf } from "@/lib/demo/state";
 import publication from "@/data/publication-dates.json";
+import changes from "@/data/change-summaries.json";
 import { SourcesCatalog } from "./sources-catalog";
 import { getSession } from "@/lib/auth/server";
 
@@ -17,7 +18,7 @@ export default async function SourcesPage() {
   const demo = fws.map((u) => ({ ...u, status: statusOf(state, u.key), released: isReleased(state, u.key), published: dates[sourceIdOf(u.currentId) ?? ""] ?? null }));
   return (
     <Suspense>
-      <SourcesCatalog docs={JSON.parse(JSON.stringify(docs))} demo={demo} dates={dates} role={session?.role ?? "viewer"} />
+      <SourcesCatalog docs={JSON.parse(JSON.stringify(docs))} demo={demo} dates={dates} summaries={changes.items} role={session?.role ?? "viewer"} />
     </Suspense>
   );
 }

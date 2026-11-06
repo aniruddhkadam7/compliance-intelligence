@@ -1,0 +1,116 @@
+{
+ "source": "Summary_of_changes_FWs_Stds.xlsx",
+ "version": "8a697dafb1b3",
+ "items": [
+  {
+   "legacySourceId": "120",
+   "legacy": "CIS Controls v8",
+   "latest": "CIS Controls v8.1",
+   "upgrade": "Minor",
+   "summary": "Retains 18 Controls and 153 Safeguards, with revised asset classes, including Documentation, and updated Safeguard mappings. NIST CSF alignment now includes the Govern function. The update preserves the existing structure, with no major Controls or Safeguards reported as merged or removed.",
+   "affected": "No major structural change. CIS v8.1 retains the existing Controls structure. The overall structure remains 18 CIS Controls and 153 Safeguards.",
+   "domains": "Asset Classes were revised, including the addition of “Documentation” as a new Asset Type/Class. Asset Class mappings to Safeguards were updated accordingly. NIST CSF mappings were also updated to align with NIST CSF 2.0, including the Govern function.",
+   "merged": "None. No major Controls or Safeguards were merged as part of the v8.1 update.",
+   "removed": "None. No major Controls or Safeguards were removed."
+  },
+  {
+   "legacySourceId": "140",
+   "legacy": "COBIT 4.1",
+   "latest": "COBIT 2019 (COBIT 7 is yet to be released)",
+   "upgrade": "Major",
+   "summary": "Replaces the legacy 34-process structure with 40 governance and management objectives across one governance and four management domains. Concepts were reorganized, renamed or expanded through intermediate versions. The old structure was replaced rather than directly mapped, so a simple section-level merger or removal list is not applicable.",
+   "affected": "Increased from 34 to 40. The framework moved from process-based IT controls to broader governance and management objectives.",
+   "domains": "One governance domain and four management domains are now used.",
+   "merged": "Framework comprehensively restructured; direct section-level merger not applicable.",
+   "removed": "The old structure was replaced. Many concepts were reorganised, renamed or expanded through intermediate versions."
+  },
+  {
+   "legacySourceId": "130",
+   "legacy": "CSA-CCM v4.0 Implementation Guidelines",
+   "latest": "CSA-CCM v4.1 Implementation Guidelines",
+   "upgrade": "Major",
+   "summary": "The underlying CCM expands from 197 to 207 controls, with 11 additions across AIS, DCS, LOG, SEF, STA and TVM. All 17 domains remain, with IVS renamed I&S. Legacy password controls IAM-02 and IAM-15 consolidate into IAM-14. An IAM removal is reported, but exact consolidation/removal accounting still requires the official change analysis.",
+   "affected": "The underlying CCM increased from 197 to 207 controls. Published guidance identifies 11 added controls; the exact consolidation/removal accounting requires the official change analysis.",
+   "domains": "New controls added across AIS, DCS, LOG, SEF, STA and TVM; 17 domains retained, with Infrastructure & Virtualization Security (IVS) renamed Infrastructure Security (I&S).",
+   "merged": "Legacy IAM-02 Strong Password Policy and Procedures and IAM-15 Passwords Management were consolidated into IAM-14 Credentials Management.",
+   "removed": "1 IAM control removed"
+  },
+  {
+   "legacySourceId": "160",
+   "legacy": "IEC 62443-2-1:2010",
+   "latest": "IEC 62443-2-1:2024",
+   "upgrade": "Major",
+   "summary": "Reorganizes three CSMS categories into eight Security Program Elements and introduces a maturity model. Coverage includes asset-owner IACS security, risk management, policies, implementation, monitoring, continual improvement and legacy systems. Requirements were comprehensively regrouped, with no reliable public one-to-one merger list. Duplicated ISMS requirements were removed, without evidence of deleting core IACS security topics.",
+   "affected": "3 CSMS categories restructured into 8 Security Program Elements; a maturity model was added",
+   "domains": "Asset-owner IACS security program, risk management, policies and procedures, implementation, monitoring, continual improvement and legacy-system treatment",
+   "merged": "CSMS requirements comprehensively regrouped into SPEs; no reliable one-to-one merger list available publicly",
+   "removed": "Requirements duplicating an ISMS were removed; no evidence that core IACS security topics were simply deleted"
+  },
+  {
+   "legacySourceId": "260",
+   "legacy": "ISO/IEC 27001:2013",
+   "latest": "ISO/IEC 27001:2022",
+   "upgrade": "Major",
+   "summary": "Restructures Annex A from 114 to 93 controls across four themes: Organizational, People, Physical and Technological. Eleven new controls were introduced, with 56 existing controls reported as merged into 24. Clauses 4–10 remain largely intact, including the new Clause 6.3. The reduction reflects consolidation, renaming and updates—not a simple deletion of 21 controls.",
+   "affected": "Annex A: 114 → 93 controls; 11 new controls introduced; Clauses 4–10 largely retained with some updates including new Clause 6.3",
+   "domains": "14 domains → 4 themes: Organizational (37), People (8), Physical (14), Technological (34)",
+   "merged": "56 existing controls merged into 24 controls",
+   "removed": "No simple 21-control deletion. Reduction largely resulted from consolidation/restructuring; controls were also renamed and updated"
+  },
+  {
+   "legacySourceId": "261",
+   "legacy": "ISO/IEC 27002:2013",
+   "latest": "ISO/IEC 27002:2022",
+   "upgrade": "Major",
+   "summary": "Reduces the control set from 114 to 93, introduces 11 new controls and replaces 14 domains with four themes: Organizational, People, Physical and Technological. The listed changes report 56 existing controls consolidated into 24. No major security requirements are reported as removed; discontinued controls were mainly merged, renamed or restructured.",
+   "affected": "Controls reduced from 114 to 93. Eleven new controls were introduced and the overall control structure was updated.",
+   "domains": "14 domains reorganized into 4 themes covering Organizational, People, Physical and Technological controls.",
+   "merged": "56 existing controls were consolidated into 24 controls to simplify overlapping requirements.",
+   "removed": "No major security requirements were removed. Most discontinued controls were merged, renamed or restructured."
+  },
+  {
+   "legacySourceId": "263",
+   "legacy": "ISO/IEC 27701:2019",
+   "latest": "ISO/IEC 27701:2025",
+   "upgrade": "Major",
+   "summary": "Becomes a standalone Privacy Information Management System with 78 Annex A controls, replacing its extension-based relationship with ISO/IEC 27001 and ISO/IEC 27002. Coverage spans privacy governance, risk management, controller and processor obligations, information security and continual improvement. Requirements are reorganized into controller, processor and shared control groups, and mandatory dependency on ISO/IEC 27001 is removed.",
+   "affected": "Changed from an extension of ISO IEC 27001 and ISO IEC 27002 to a standalone Privacy Information Management System standard with 78 Annex A controls.",
+   "domains": "Covers privacy governance, risk management, controller requirements, processor requirements, information security and continual improvement.",
+   "merged": "Controller, processor and shared security requirements were reorganized into three Annex A control groups.",
+   "removed": "Dependency on ISO IEC 27001 was removed. The previous extension based structure was replaced by a standalone management system structure."
+  },
+  {
+   "legacySourceId": "267",
+   "legacy": "ISO/IEC 27017:2015",
+   "latest": "ISO/IEC 27017:2026",
+   "upgrade": "Minor",
+   "summary": "Aligns cloud-security guidance with the revised ISO/IEC 27002:2022 structure. Coverage includes cloud-security responsibilities, shared roles, cloud environments, security agreements and cloud-specific risks. Existing requirements were reorganized or incorporated into the updated structure, with no major cloud-security requirements removed.",
+   "affected": "Updated to align with ISO IEC 27002 2022 and its revised information security control structure.",
+   "domains": "Covers cloud security responsibilities, shared roles, cloud environments, security agreements and cloud specific risks.",
+   "merged": "Cloud specific controls and guidance were reorganized and aligned with the updated ISO IEC 27002 controls.",
+   "removed": "No major cloud security requirements were removed. Previous requirements were reorganized or incorporated into updated controls."
+  },
+  {
+   "legacySourceId": "268",
+   "legacy": "ISO/IEC 27018:2019",
+   "latest": "ISO/IEC 27018:2025",
+   "upgrade": "Minor",
+   "summary": "Realigns cloud-privacy guidance with ISO/IEC 27002:2022 and adds Annex B for extended implementation guidance. Coverage includes personal-information processing, accountability, subcontractors, disclosure, transfers, and data return and deletion. Existing guidance was remapped, with additional guidance consolidated into Annex B; no major privacy principles are reported as removed.",
+   "affected": "Updated to align with ISO IEC 27002 2022. Annex B was added to provide extended implementation guidance.",
+   "domains": "Covers cloud personal information processing, accountability, subcontractors, disclosure, transfers, return and deletion.",
+   "merged": "Existing privacy guidance was realigned with the revised ISO IEC 27002 control structure. Additional guidance was consolidated into Annex B.",
+   "removed": "No major privacy principles were removed. Changes mainly reflect realignment, clarification and expanded implementation guidance."
+  },
+  {
+   "legacySourceId": "200",
+   "legacy": "NIST CSF v1.1",
+   "latest": "NIST CSF 2.0",
+   "upgrade": "Major",
+   "summary": "Expands from five to six Functions by introducing Govern in the February 2024 release. The update strengthens governance, organizational context, risk management, roles, policy, oversight and supply-chain risk. Governance outcomes consolidate under Govern, with supply-chain risk moved and expanded. No Function was removed; some Categories and Subcategories were relocated, renamed, consolidated or revised.",
+   "affected": "Framework expanded from 5 to 6 Functions with Govern introduced as the new Function. NIST Cybersecurity Framework 2.0 was published in February 2024.",
+   "domains": "Greater focus on governance, organizational context, risk management, roles, policy, oversight and supply chain risk.",
+   "merged": "Governance related outcomes were consolidated under Govern. Supply chain risk management was moved and expanded.",
+   "removed": "No complete Function was removed. Some Categories and Subcategories were relocated, renamed, consolidated or revised."
+  }
+ ]
+}

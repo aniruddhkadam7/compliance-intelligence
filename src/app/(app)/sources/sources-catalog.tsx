@@ -136,6 +136,24 @@ const newerVersion = (a: string, b: string | null) => {
   return false;
 };
 
+/** The team's summary of a framework upgrade (Summary of changes workbook), shown on hover over the latest version. */
+export interface ChangeSummary {
+  legacySourceId: string | null; legacy: string; latest: string; upgrade: string;
+  summary: string; affected: string; domains: string; merged: string; removed: string;
+}
+
+function SummaryCard({ s }: { s: ChangeSummary }) {
+  const rows: [string, string][] = [["Affected sections", s.affected], ["Domains", s.domains], ["Merged", s.merged], ["Removed", s.removed]];
+  return (
+    <div className="space-y-1.5 py-1 text-left">
+      <div className="text-[12px] font-semibold">{s.legacy} → {s.latest}</div>
+      {s.upgrade && <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{s.upgrade} upgrade</div>}
+      <p>{s.summary}</p>
+      {rows.filter(([, v]) => v).map(([k, v]) => <p key={k}><span className="font-semibold">{k}: </span>{v}</p>)}
+    </div>
+  );
+}
+
 const STATUS_FILTERS = [{ value: "AVAILABLE", label: "Update available" }, { value: "UPDATED", label: "Updated" }];
 export const versionLabel = (family: string, v: string | null) => (v && family === "CIS Controls" && /^\d/.test(v) ? `v${v}` : v);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -151,7 +169,7 @@ const UPDATE_STEPS = (names: string[]): ProgressStep[] => [
  * Sources: every framework and document in the library with its current and latest version. Updates are applied
  * by selecting frameworks and choosing Update (or Reject to decline them).
  */
-export function SourcesCatalog({ docs, demo, dates, role }: { docs: SourceRow[]; demo: DemoUpdate[]; dates: Record<string, string>; role: Role }) {
+export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: SourceRow[]; demo: DemoUpdate[]; dates: Record<string, string>; summaries: ChangeSummary[]; role: Role }) {
   const router = useRouter();
   const qc = useQueryClient();
   const [s, set] = useUrlState(DEFAULTS);
@@ -197,6 +215,15 @@ export function SourcesCatalog({ docs, demo, dates, role }: { docs: SourceRow[];
       });
   }, [docs, demo, dates]);
   type Row = (typeof rowsAll)[number];
+  // A row's upgrade summary: the one whose legacy version is this document or another version of it in the library.
+  const summaryOf = useMemo(() => {
+    const bySourceId = new Map(summaries.filter((s) => s.legacySourceId).map((s) => [s.legacySourceId!, s]));
+    const sourceIdOf = new Map(docs.map((d) => [d.id, d.sourceId]));
+    return (d: SourceRow): ChangeSummary | null => {
+      for (const id of [d.sourceId, ...d.familyVersions.map((v) => sourceIdOf.get(v.id))]) if (id && bySourceId.has(id)) return bySourceId.get(id)!;
+      return null;
+    };
+  }, [docs, summaries]);
   // A framework is connected when a monitoring connector watches any version of it.
   const connectorsOf = (d: SourceRow) => {
     const seen = new Map<string, SourceRow["monitoring"][number]>();
@@ -353,7 +380,11 @@ export function SourcesCatalog({ docs, demo, dates, role }: { docs: SourceRow[];
                           {r.current ? <Mono>{r.current}</Mono> : <span className="text-muted">{/law|regulation/i.test(d.type ?? "") ? "As enacted" : "Not recorded"}</span>}
                         </td>
                         <td className="px-3 py-2.5 text-xs">
-                          {r.latest ? <span className={cn(r.status === "AVAILABLE" && !r.rejected ? "font-semibold text-warning" : "text-fg-2")}>{r.latest}</span> : <span className="text-subtle">—</span>}
+                          {r.latest ? (
+                            <Tooltip content={summaryOf(d) && <SummaryCard s={summaryOf(d)!} />} className="max-w-md px-3 py-2">
+                              <span className={cn(r.status === "AVAILABLE" && !r.rejected ? "font-semibold text-warning" : "text-fg-2", summaryOf(d) && "cursor-help underline decoration-dotted underline-offset-2")}>{r.latest}</span>
+                            </Tooltip>
+                          ) : <span className="text-subtle">—</span>}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-xs text-fg-2">{r.published ? formatDate(r.published) : <span className="text-subtle">—</span>}</td>
                         <td className="px-3 py-2.5">
