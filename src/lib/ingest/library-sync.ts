@@ -19,6 +19,8 @@ export interface LibraryPlan {
   renumbered: { frameworkId: string; name: string; from: string; to: string; sections: number; matched: number }[];
   /** Existing documents whose Source ID the file gives to a different document, with no match in the file. */
   displaced: { frameworkId: string; name: string; from: string; to: string }[];
+  /** Documents that keep their Source ID but whose section numbers the file gives to another document. */
+  resectioned: { frameworkId: string; name: string; sections: number; matched: number }[];
   /** Documents in the file that are not in the library yet. */
   added: string[];
   /** Existing section (citation id) -> its Source Section ID after the sync. */
@@ -41,7 +43,7 @@ export async function planLibrary(db: Db, ds: NormalisedDataset): Promise<Librar
   const fileSections = new Map<string, NormalisedDataset["citations"]>();
   for (const c of ds.citations) fileSections.set(c.frameworkId, [...(fileSections.get(c.frameworkId) ?? []), c]);
 
-  const plan: LibraryPlan = { renumbered: [], displaced: [], added: [], rekey: new Map(), lookup: new Map(), sectionDoc: new Map(), issues: [] };
+  const plan: LibraryPlan = { renumbered: [], displaced: [], resectioned: [], added: [], rekey: new Map(), lookup: new Map(), sectionDoc: new Map(), issues: [] };
   const target = new Map<string, FileDoc>(); // existing framework id -> file document it becomes
   for (const f of ds.frameworks) {
     const same = appBySid.get(f.sourceId);
@@ -52,12 +54,23 @@ export async function planLibrary(db: Db, ds: NormalisedDataset): Promise<Librar
   }
 
   const claimed = new Set(ds.frameworks.map((f) => f.sourceId));
-  const moving = app.filter((a) => (target.has(a.id) && target.get(a.id)!.sourceId !== a.sourceId) || (!target.has(a.id) && claimed.has(a.sourceId)));
+  const sections = await db.citation.findMany({ select: { id: true, frameworkId: true, sourceSectionId: true, sectionName: true } });
+  // A document can keep its own number while the file gives some of its section numbers to another document
+  // (e.g. sections 205xxx of SP 800-53 [204] becoming SP 800-82 [205]); its sections must move out of the way too.
+  const appIdOfFileDoc = new Map([...target].map(([appId, f]) => [f.id, appId]));
+  const fileOwner = new Map(ds.citations.map((c) => [c.sourceSectionId, appIdOfFileDoc.get(c.frameworkId) ?? null]));
+  const crowded = new Set(sections.filter((c) => fileOwner.has(c.sourceSectionId) && fileOwner.get(c.sourceSectionId) !== c.frameworkId).map((c) => c.frameworkId));
+  const moving = app.filter((a) => (target.has(a.id) && target.get(a.id)!.sourceId !== a.sourceId) || (!target.has(a.id) && claimed.has(a.sourceId)) || crowded.has(a.id));
   if (moving.length) {
-    const sections = await db.citation.findMany({ where: { frameworkId: { in: moving.map((a) => a.id) } }, select: { id: true, frameworkId: true, sourceSectionId: true, sectionName: true } });
     for (const a of moving) {
       const own = sections.filter((c) => c.frameworkId === a.id);
       const f = target.get(a.id);
+      if (!f && !claimed.has(a.sourceId)) {
+        // Not in the file and its number is free, but its section numbers are taken: keep them under marked numbers.
+        for (const c of own) plan.rekey.set(c.id, `${c.sourceSectionId}-prev`);
+        plan.resectioned.push({ frameworkId: a.id, name: a.name, sections: own.length, matched: 0 });
+        continue;
+      }
       if (!f) {
         // The file uses this number for another document and has no copy of this one: keep it under a marked number.
         plan.displaced.push({ frameworkId: a.id, name: a.name, from: a.sourceId, to: `${a.sourceId}-prev` });
@@ -73,13 +86,13 @@ export async function planLibrary(db: Db, ds: NormalisedDataset): Promise<Librar
         const sid = [byName.get(norm(c.sectionName)), byId.get(identifier(c.sectionName))].find((x) => x && !used.has(x));
         if (sid) { used.add(sid); matched++; plan.rekey.set(c.id, sid); } else plan.rekey.set(c.id, `${c.sourceSectionId}-prev`);
       }
-      plan.renumbered.push({ frameworkId: a.id, name: a.name, from: a.sourceId, to: f.sourceId, sections: own.length, matched });
+      if (f.sourceId === a.sourceId) plan.resectioned.push({ frameworkId: a.id, name: a.name, sections: own.length, matched });
+      else plan.renumbered.push({ frameworkId: a.id, name: a.name, from: a.sourceId, to: f.sourceId, sections: own.length, matched });
     }
   }
 
   // Where every Source Section ID in the file will point after the sync.
-  const existing = await db.citation.findMany({ select: { id: true, sourceSectionId: true } });
-  const after = new Map(existing.map((c) => [plan.rekey.get(c.id) ?? c.sourceSectionId, c.id]));
+  const after = new Map(sections.map((c) => [plan.rekey.get(c.id) ?? c.sourceSectionId, c.id]));
   const docName = new Map(ds.frameworks.map((f) => [f.id, f.name]));
   for (const c of ds.citations) {
     plan.lookup.set(c.sourceSectionId, after.get(c.sourceSectionId) ?? c.id);
@@ -93,6 +106,11 @@ export async function planLibrary(db: Db, ds: NormalisedDataset): Promise<Librar
     });
   for (const d of plan.displaced)
     plan.issues.push({ severity: "WARNING", code: "SOURCE_ID_RENUMBERED", message: `${shortName(d.name)} (${d.from}) is not in this file and ${d.from} now names another document; it is kept as ${d.to}.` });
+  for (const r of plan.resectioned)
+    plan.issues.push({
+      severity: "WARNING", code: "SECTIONS_RENUMBERED",
+      message: `${shortName(r.name)} keeps its Source ID, but this file gives some of its section numbers to another document. Its ${r.sections} sections are re-keyed (${r.matched} matched by name to the file's numbering${r.matched < r.sections ? `, ${r.sections - r.matched} keep their old number with “-prev”` : ""}); mappings and history are kept.`,
+    });
   for (const n of plan.added) plan.issues.push({ severity: "INFO", code: "DOCUMENT_ADDED", message: `${shortName(n)} is new to the document library and will be added.` });
   return plan;
 }
@@ -100,11 +118,14 @@ export async function planLibrary(db: Db, ds: NormalisedDataset): Promise<Librar
 /** Applies the re-keying (two passes through temporary keys, so swapped numbers never collide). */
 export async function applyRekey(tx: Prisma.TransactionClient, plan: LibraryPlan) {
   const frameworks = [...plan.renumbered.map((r) => ({ id: r.frameworkId, to: r.to })), ...plan.displaced.map((d) => ({ id: d.frameworkId, to: d.to }))];
-  if (!frameworks.length) return;
-  const ids = frameworks.map((f) => f.id);
-  await tx.$executeRaw`UPDATE "Framework" SET "sourceId" = '__rekey_' || id WHERE id IN (${Prisma.join(ids)})`;
+  const ids = [...frameworks.map((f) => f.id), ...plan.resectioned.map((r) => r.frameworkId)];
+  if (!ids.length) return;
+  if (frameworks.length) await tx.$executeRaw`UPDATE "Framework" SET "sourceId" = '__rekey_' || id WHERE id IN (${Prisma.join(frameworks.map((f) => f.id))})`;
   await tx.$executeRaw`UPDATE "Citation" SET "sourceSectionId" = '__rekey_' || id WHERE "frameworkId" IN (${Prisma.join(ids)})`;
-  for (const f of frameworks) await tx.framework.update({ where: { id: f.id }, data: { sourceId: f.to } });
+  if (frameworks.length) {
+    const values = Prisma.join(frameworks.map((f) => Prisma.sql`(${f.id}, ${f.to})`));
+    await tx.$executeRaw`UPDATE "Framework" AS f SET "sourceId" = v.sid FROM (VALUES ${values}) AS v(id, sid) WHERE f.id = v.id`;
+  }
   const pairs = [...plan.rekey];
   for (let i = 0; i < pairs.length; i += 500) {
     const values = Prisma.join(pairs.slice(i, i + 500).map(([id, sid]) => Prisma.sql`(${id}, ${sid})`));

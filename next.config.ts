@@ -14,8 +14,9 @@ const nextConfig: NextConfig = {
   // A lockfile in a parent folder otherwise makes Next infer the wrong workspace root.
   outputFileTracingRoot: path.join(__dirname),
   poweredByHeader: false,
-  // Keep visited pages in the client router cache; imports and resets call router.refresh().
-  experimental: { staleTimes: { dynamic: 300, static: 600 } },
+  // Keep visited pages briefly in the client router cache (instant back/forward). Kept short: a page that failed to
+  // load was otherwise replayed from this cache for 5 minutes, so clicking it again showed nothing until a hard reload.
+  experimental: { staleTimes: { dynamic: 30, static: 300 } },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

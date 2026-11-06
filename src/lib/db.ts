@@ -10,6 +10,9 @@ function databaseUrl() {
   try {
     const url = new URL(raw);
     if (url.hostname.includes("-pooler") && !url.searchParams.has("pgbouncer")) url.searchParams.set("pgbouncer", "true");
+    // Requests wait up to 60 s for a free connection (Prisma's default is 10 s). With a single connection, such as
+    // the local PGlite server, a page opened during an import otherwise failed outright instead of loading after it.
+    if (!url.searchParams.has("pool_timeout")) url.searchParams.set("pool_timeout", "60");
     return url.toString();
   } catch {
     return raw;

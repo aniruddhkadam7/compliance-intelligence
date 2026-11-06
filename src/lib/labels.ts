@@ -26,6 +26,7 @@ export const ISSUE_LABELS: Record<string, string> = {
   UNKNOWN_CONTROL: "Test procedure for unknown control",
   UNKNOWN_SECTION_ID: "Mapping to unknown Source Section ID",
   SOURCE_ID_RENUMBERED: "Document renumbered in this file",
+  SECTIONS_RENUMBERED: "Section numbers reassigned in this file",
   DOCUMENT_ADDED: "New document",
   RELATIONSHIP_MATRIX: "Relationship sheet read",
   CONTROLS_OUTSIDE_REGISTER: "Controls outside the client register",

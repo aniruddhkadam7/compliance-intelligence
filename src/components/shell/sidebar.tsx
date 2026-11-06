@@ -46,7 +46,9 @@ export function Sidebar({ badges, role, onNavigate }: { badges: { updates: numbe
                 <Link
                   key={item.href}
                   href={item.href}
-                  prefetch
+                  // Default (partial) prefetch: only the loading skeleton is fetched ahead, so a click shows the page frame
+                  // at once. A full prefetch rendered every sidebar page on the server at load, queuing ~10 heavy renders
+                  // on the database ahead of the page the user actually clicked.
                   onMouseEnter={() => warmRoute(qc, item.href)}
                   onFocus={() => warmRoute(qc, item.href)}
                   onClick={onNavigate}

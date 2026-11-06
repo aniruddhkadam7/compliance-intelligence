@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { parseWorkbook } from "./parse";
 import type { Issue, SheetSummary } from "./ccf-workbook";
 import { hasLibrary, normaliseSourceIdWorkbook } from "./source-id-workbook";
@@ -69,15 +69,18 @@ async function writeLibrary(tx: Prisma.TransactionClient, ds: NormalisedDataset,
   // Obligations: insert new, update changed; obligations missing from the file are kept.
   const existing = new Map((await tx.citation.findMany({ select: { id: true, sourceSectionId: true, sectionName: true, sectionText: true, frameworkId: true } })).map((c) => [c.sourceSectionId, c]));
   const fresh = ds.citations.filter((c) => !existing.has(c.sourceSectionId));
-  let updated = 0;
-  for (const c of ds.citations) {
+  const changed = ds.citations.flatMap((c) => {
     const e = existing.get(c.sourceSectionId);
     const frameworkId = fwId.get(c.frameworkId)!;
-    if (e && (e.sectionName !== c.sectionName || e.sectionText !== c.sectionText || e.frameworkId !== frameworkId)) {
-      await tx.citation.update({ where: { id: e.id }, data: { sectionName: c.sectionName, sectionText: c.sectionText, frameworkId, authSource: c.authSource, raw: json(c.raw), importJobId: jobId } });
-      updated++;
-    }
-  }
+    return e && (e.sectionName !== c.sectionName || e.sectionText !== c.sectionText || e.frameworkId !== frameworkId) ? [{ id: e.id, c, frameworkId }] : [];
+  });
+  // One statement per 200 rows instead of one round trip per row (each is a network hop to a hosted database).
+  await chunked(changed, 200, (b) => {
+    const values = Prisma.join(b.map(({ id, c, frameworkId }) => Prisma.sql`(${id}, ${c.sectionName}, ${c.sectionText ?? null}, ${frameworkId}, ${c.authSource}, ${JSON.stringify(c.raw ?? null)})`));
+    return tx.$executeRaw`UPDATE "Citation" AS t SET "sectionName" = v.name, "sectionText" = v.text, "frameworkId" = v.fw, "authSource" = v.auth, raw = v.raw::jsonb, "importJobId" = ${jobId}
+      FROM (VALUES ${values}) AS v(id, name, text, fw, auth, raw) WHERE t.id = v.id`;
+  });
+  const updated = changed.length;
   await chunked(fresh, 500, (b) => tx.citation.createMany({ data: b.map((c) => ({ ...c, frameworkId: fwId.get(c.frameworkId)!, raw: json(c.raw), importJobId: jobId })) }));
   const inFile = new Set(ds.citations.map((c) => c.sourceSectionId));
   return { added: fresh.length, updated, kept: [...existing.keys()].filter((k) => !inFile.has(k)).length };
@@ -131,7 +134,7 @@ export async function analyse(db: PrismaClient, kind: ImportKind, buffer: Buffer
     const plan = await planLibrary(db, r.dataset);
     return {
       issues: [...r.issues, ...plan.issues], sheets: r.sheets,
-      counts: { ...r.counts, documentsRenumbered: plan.renumbered.length + plan.displaced.length, documentsAdded: plan.added.length },
+      counts: { ...r.counts, documentsRenumbered: plan.renumbered.length + plan.displaced.length + plan.resectioned.length, documentsAdded: plan.added.length },
       write: (tx, { jobId }) => writeLibrary(tx, r.dataset, plan, jobId),
     };
   }
@@ -168,7 +171,7 @@ export async function analyse(db: PrismaClient, kind: ImportKind, buffer: Buffer
     sheets: ctl.sheets.map((s) => ({ ...s, role: roleOf(s.name) as typeof s.role })),
     counts: {
       ...ctl.counts,
-      ...(plan ? { libraryDocuments: lib.counts.frameworks ?? 0, librarySections: lib.counts.citations ?? 0, documentsRenumbered: plan.renumbered.length + plan.displaced.length, documentsAdded: plan.added.length } : {}),
+      ...(plan ? { libraryDocuments: lib.counts.frameworks ?? 0, librarySections: lib.counts.citations ?? 0, documentsRenumbered: plan.renumbered.length + plan.displaced.length + plan.resectioned.length, documentsAdded: plan.added.length } : {}),
       ...(rel.rows.length ? { crossFramework: rel.counts.crossFramework, versionTransitions: rel.counts.versionTransitions } : {}),
     },
     write: async (tx, { jobId }) => {

@@ -13,7 +13,14 @@ async function parse<T>(res: Response): Promise<T> {
   return body as T;
 }
 
-export const apiGet = <T>(url: string) => fetch(url, { cache: "no-store" }).then((r) => parse<T>(r));
+/** Reads give up after 90 s so a stuck request surfaces as an error (with a retry) instead of an endless spinner. */
+export const apiGet = <T>(url: string, signal?: AbortSignal) =>
+  fetch(url, { cache: "no-store", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(90_000)]) : AbortSignal.timeout(90_000) })
+    .catch((e: unknown) => {
+      if (e instanceof DOMException && e.name === "TimeoutError") throw new ApiError(504, "The server took too long to respond.");
+      throw e;
+    })
+    .then((r) => parse<T>(r));
 
 export const apiSend = <T>(url: string, body?: unknown, method = "POST") =>
   fetch(url, {
