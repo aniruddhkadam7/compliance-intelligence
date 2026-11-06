@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { publisherOf } from "@/lib/queries/sources";
 import { TERMS } from "@/lib/terms";
 import { Capabilities } from "./capabilities";
+import { RollbackWord } from "./rollback-word";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: TERMS.overview };
@@ -55,7 +56,7 @@ export default async function OverviewPage() {
         <div className="border-l-[3px] border-[#ffe600] pl-5">
           <Tag>Regulatory Intelligence</Tag>
           <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Your compliance landscape, connected</div>
-          <h1 className="mt-1.5 text-[26px] font-semibold leading-[1.2] tracking-tight text-fg sm:text-[30px]">One regulatory landscape.<br />One connected view of compliance.</h1>
+          <h1 className="mt-1.5 text-[26px] font-semibold leading-[1.2] tracking-tight text-fg sm:text-[30px]">One regulatory <RollbackWord>landscape</RollbackWord>.<br />One connected view of compliance.</h1>
           <p className="mt-3 max-w-5xl text-[13px] leading-relaxed text-muted">Regulations multiply every year. Requirements evolve, frameworks overlap, and manually mapping them to existing controls creates unnecessary complexity.</p>
           <p className="mt-2 max-w-5xl text-[13px] leading-relaxed text-muted">Our AI-powered platform continuously tracks regulatory updates, identifies emerging requirements and intelligently maps them to your existing controls, helping you stay ahead of regulatory change and maintain a connected view of compliance.</p>
         </div>
