@@ -110,11 +110,11 @@ async function pendingImports(frameworkId?: string) {
     where: { status: "READY", matchKind: "NEW_VERSION", matchFrameworkId: frameworkId ?? { not: null } },
     orderBy: { createdAt: "desc" }, select: { id: true, matchFrameworkId: true, detected: true, createdAt: true },
   });
-  const pending = new Map<string, { id: string; version: string | null; uploadedAt: string; released: boolean }>();
+  const pending = new Map<string, { id: string; version: string | null; uploadedAt: string; released: boolean; fromConnector: string | null }>();
   for (const x of drafts) {
     if (pending.has(x.matchFrameworkId!)) continue;
-    const det = (x.detected ?? {}) as { libraryVersion?: string; release?: unknown };
-    pending.set(x.matchFrameworkId!, { id: x.id, version: det.libraryVersion ?? null, uploadedAt: x.createdAt.toISOString(), released: !!det.release });
+    const det = (x.detected ?? {}) as { libraryVersion?: string; release?: unknown; source?: { connector?: string } };
+    pending.set(x.matchFrameworkId!, { id: x.id, version: det.libraryVersion ?? null, uploadedAt: x.createdAt.toISOString(), released: !!det.release, fromConnector: det.source?.connector ?? null });
   }
   return pending;
 }

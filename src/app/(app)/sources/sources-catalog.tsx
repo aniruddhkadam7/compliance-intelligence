@@ -126,7 +126,15 @@ export interface DemoUpdate {
 }
 
 /** An update a user can install from Sources: a demo framework update, or an uploaded version an admin released. */
-interface Offer { key: string; name: string; released: boolean; docId?: string; importId?: string }
+interface Offer { key: string; name: string; released: boolean; docId?: string; importId?: string; fromConnector?: string | null }
+
+/** True when `a` is a later version than `b` ("5.2.0" after "5.1.1"; "2.0" equals "2"). */
+const newerVersion = (a: string, b: string | null) => {
+  const n = (v: string | null) => ((v ?? "").match(/\d+(?:\.\d+)*/)?.[0] ?? "").split(".").map(Number);
+  const x = n(a), y = n(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
+};
 
 const STATUS_FILTERS = [{ value: "AVAILABLE", label: "Update available" }, { value: "UPDATED", label: "Updated" }];
 export const versionLabel = (family: string, v: string | null) => (v && family === "CIS Controls" && /^\d/.test(v) ? `v${v}` : v);
@@ -167,11 +175,12 @@ export function SourcesCatalog({ docs, demo, dates, role }: { docs: SourceRow[];
         // Users see an update only once an admin has released it; until then the document reads as up to date.
         const offer: Offer | null = u && u.status !== "UPDATED" && u.released
           ? { key: u.key, name: `${u.family} ${versionLabel(u.family, u.current)}`, released: true }
-          : imp?.released ? { key: `doc:${d.id}`, name: `${d.short} → ${imp.version ?? d.latestCheck?.latestVersion ?? "new version"}`, released: true, docId: d.id, importId: imp.id } : null;
+          : imp?.released ? { key: `doc:${d.id}`, name: `${d.short} → ${imp.version ?? d.latestCheck?.latestVersion ?? "new version"}`, released: true, docId: d.id, importId: imp.id, fromConnector: imp.fromConnector } : null;
         // A connector found a newer version that is not in the library yet: shown as available, installable once uploaded.
         const found = !u && !offer
           ? [...d.updates, ...d.familyVersions.flatMap((v) => docs.find((x) => x.id === v.id)?.updates ?? [])]
-              .find((x) => x.changeType === "VERSION_CHANGE" && x.reviewStatus === "NEW" && x.newValue) ?? null
+              // Only a version newer than the one shown: once installed, the same finding no longer means an update.
+              .find((x) => x.changeType === "VERSION_CHANGE" && x.reviewStatus === "NEW" && x.newValue && newerVersion(x.newValue, d.version)) ?? null
           : null;
         return {
           d, u, offer, found,
@@ -353,7 +362,7 @@ export function SourcesCatalog({ docs, demo, dates, role }: { docs: SourceRow[];
                               <span className={cn("flex flex-col whitespace-nowrap text-xs transition-opacity duration-700", (r.rejected || fade) && "opacity-50")}>
                                 <span className="flex items-center gap-1.5"><Dot tone="warning" />Update available</span>
                                 {r.found && !r.rejected && <span className="pl-3 text-[11px] text-muted">Found by connector · not in the library yet</span>}
-                                {o && !r.found && !r.rejected && <span className="pl-3 text-[11px] text-muted">New version in the Source Document Library</span>}
+                                {o && !r.found && !r.rejected && <span className="pl-3 text-[11px] text-muted">{o.fromConnector ? `New version downloaded by ${o.fromConnector}` : "New version in the Source Document Library"}</span>}
                               </span>
                             </Tooltip>
                           ) : (

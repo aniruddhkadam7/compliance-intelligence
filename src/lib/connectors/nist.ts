@@ -1,4 +1,4 @@
-import type { CheckContext, CheckResult, ConnectorDefinition, DetectedChange } from "./types";
+import type { CheckContext, CheckResult, ConnectorDefinition, DetectedChange, FetchedContent, FetchedSection } from "./types";
 import { ConnectorError, diffMaps, fetchJson, fetchWithTimeout, sha256, stableHash } from "./http";
 
 const sample = (ids: string[], n = 12) => ids.slice(0, n).join(", ") + (ids.length > n ? ` … (+${ids.length - n})` : "");
@@ -8,7 +8,7 @@ const versionNumber = (v: string | null | undefined) => v?.match(/\d+(?:\.\d+)*/
 // NIST CSF 2.0 via the Cybersecurity and Privacy Reference Tool (CPRT) JSON export
 // ---------------------------------------------------------------------------
 
-interface CprtExport {
+export interface CprtExport {
   response: {
     elements?: {
       documents: { doc_identifier: string; name: string; version: string; website?: string }[];
@@ -181,6 +181,120 @@ async function checkCsfPdf(ctx: CheckContext): Promise<CheckResult> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Full content: the publisher's official data turned into library sections (no AI, text copied verbatim)
+// ---------------------------------------------------------------------------
+
+interface OscalParam { id: string; label?: string; select?: { "how-many"?: string; choice?: string[] } }
+interface OscalPart { name: string; prose?: string; props?: { name: string; value: string }[]; parts?: OscalPart[] }
+interface OscalFullControl { id: string; title: string; props?: { name: string; value: string }[]; params?: OscalParam[]; parts?: OscalPart[]; controls?: OscalFullControl[] }
+export interface OscalFullCatalog {
+  catalog: { metadata: { title: string; version: string; "last-modified": string; published?: string }; groups: { id: string; title: string; controls: OscalFullControl[] }[] };
+}
+
+/** "ac-2.4" -> "AC-02(04)", the identifier form the library uses for SP 800-53. */
+export function oscalIdentifier(id: string) {
+  const m = id.match(/^([a-z]{2})-(\d+)(?:\.(\d+))?$/i);
+  if (!m) return id.toUpperCase();
+  const pad = (n: string) => n.padStart(2, "0");
+  return `${m[1].toUpperCase()}-${pad(m[2])}${m[3] ? `(${pad(m[3])})` : ""}`;
+}
+
+/**
+ * Every active control and enhancement of an OSCAL catalog as a section: its statement (items indented, parameters
+ * written as NIST prints them, e.g. "[Assignment: organization-defined frequency]") followed by its discussion.
+ */
+export function oscalSections(data: OscalFullCatalog): FetchedSection[] {
+  const params = new Map<string, OscalParam>();
+  const collect = (cs: OscalFullControl[] = []) => cs.forEach((c) => { (c.params ?? []).forEach((p) => params.set(p.id, p)); collect(c.controls); });
+  data.catalog.groups.forEach((g) => collect(g.controls));
+
+  const fill = (prose: string): string => prose.replace(/\{\{\s*insert:\s*param,\s*([\w.-]+)\s*\}\}/g, (_, id: string) => {
+    const p = params.get(id);
+    if (!p) return "[Assignment: organization-defined parameter]";
+    if (p.select?.choice?.length) return `[Selection${p.select["how-many"] === "one-or-more" ? " (one or more)" : ""}: ${p.select.choice.map(fill).join("; ")}]`;
+    return `[Assignment: ${p.label ?? "organization-defined parameter"}]`;
+  });
+  const statementText = (c: OscalFullControl) => {
+    const statement = c.parts?.find((p) => p.name === "statement");
+    if (!statement) return "";
+    const lines: string[] = statement.prose ? [fill(statement.prose)] : [];
+    const item = (part: OscalPart, depth: number) => {
+      const label = part.props?.find((p) => p.name === "label")?.value;
+      lines.push(`${"  ".repeat(depth)}${label ? `${label} ` : ""}${part.prose ? fill(part.prose) : ""}`.trimEnd());
+      (part.parts ?? []).filter((x) => x.name === "item").forEach((x) => item(x, depth + 1));
+    };
+    (statement.parts ?? []).filter((x) => x.name === "item").forEach((x) => item(x, 0));
+    return lines.join("\n");
+  };
+
+  const out: FetchedSection[] = [];
+  for (const g of data.catalog.groups) {
+    const walk = (controls: OscalFullControl[] = [], parent: OscalFullControl | null) => {
+      for (const c of controls) {
+        if (!c.props?.some((p) => p.name === "status" && p.value === "withdrawn")) {
+          const discussion = c.parts?.find((p) => p.name === "guidance")?.prose;
+          out.push({
+            identifier: oscalIdentifier(c.id), title: c.title, path: [g.title], parentIdentifier: parent ? oscalIdentifier(parent.id) : null, contentType: "REQUIREMENT",
+            text: [statementText(c), discussion ? `Discussion: ${fill(discussion)}` : ""].filter(Boolean).join("\n\n"),
+          });
+        }
+        walk(c.controls, c);
+      }
+    };
+    walk(g.controls, null);
+  }
+  return out;
+}
+
+/** "GOVERN (GV)" or "GOVERN" -> "Govern". */
+const headingName = (title: string | undefined, fallback: string) => {
+  const t = (title ?? "").replace(/\s*\([A-Z.]+\)\s*$/, "").trim() || fallback;
+  return t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t;
+};
+
+/** Every CSF subcategory in a CPRT export as a section, under its function and category, e.g. GV.OC-01. */
+export function cprtSections(data: CprtExport): FetchedSection[] {
+  const elements = data.response.elements?.elements ?? [];
+  const byId = new Map(elements.map((e) => [e.element_identifier, e]));
+  return elements.filter((e) => e.element_type === "subcategory").map((e) => {
+    const categoryId = e.element_identifier.replace(/-\d+$/, "");
+    const functionId = categoryId.split(".")[0];
+    return {
+      identifier: e.element_identifier, title: e.element_identifier, contentType: "REQUIREMENT", parentIdentifier: categoryId,
+      path: [`${headingName(byId.get(functionId)?.title, functionId)} (${functionId})`, `${headingName(byId.get(categoryId)?.title, categoryId)} (${categoryId.split(".")[1] ?? categoryId})`],
+      text: (e.text ?? e.title ?? "").trim(),
+    };
+  });
+}
+
+async function fetchOscal80053Content(): Promise<FetchedContent> {
+  const { data } = await fetchJson<OscalFullCatalog>(OSCAL_URL, { timeoutMs: 120_000 });
+  if (!data) throw new ConnectorError("Empty OSCAL response");
+  const m = data.catalog.metadata;
+  return {
+    version: m.version, publisher: "NIST", documentType: "Good Practice", sourceUrl: OSCAL_URL,
+    title: `NIST SP 800-53 r${m.version} - Security and Privacy Controls for Information Systems and Organizations, ${m.version}`,
+    shortTitle: `NIST SP 800-53 r${m.version}`, publishedDate: (m.published ?? m["last-modified"])?.slice(0, 10) ?? null,
+    sections: oscalSections(data),
+  };
+}
+
+async function fetchCprtCsfContent(ctx: { state: Record<string, unknown> | null }): Promise<FetchedContent> {
+  // The newest release CPRT publishes: a successor if the check has seen one, otherwise CSF 2.0.
+  const seen = ((ctx.state as { successors?: string[] } | null)?.successors ?? []).map((s) => s.split(" ")[0]);
+  const docId = seen.at(-1) ?? CSF_DOC;
+  const url = `${CPRT}/${docId}/export/json?element=all`;
+  const { data } = await fetchJson<CprtExport>(url, { timeoutMs: 60_000 });
+  const doc = data?.response.elements?.documents?.[0];
+  if (!data || !doc) throw new ConnectorError("CPRT export contained no document metadata");
+  const version = versionNumber(doc.version) ?? doc.version;
+  return {
+    version, publisher: "NIST", documentType: "Good Practice", sourceUrl: url, publishedDate: null,
+    title: `NIST Cybersecurity Framework (CSF) ${version}`, shortTitle: `NIST CSF ${version}`, sections: cprtSections(data),
+  };
+}
+
 export const nistConnectors: ConnectorDefinition[] = [
   {
     id: "nist-csf2-cprt",
@@ -192,8 +306,9 @@ export const nistConnectors: ConnectorDefinition[] = [
     endpointUrl: `${CPRT}/${CSF_DOC}/export/json?element=all`,
     pollingMinutes: 1440,
     framework: { family: "NIST CSF", version: "2.0" },
-    description: "Downloads the CSF 2.0 reference data from the NIST Cybersecurity and Privacy Reference Tool. Detects version changes, element-level content changes (functions, categories, subcategories) and successor CSF releases.",
+    description: "Downloads the CSF 2.0 reference data from the NIST Cybersecurity and Privacy Reference Tool. Detects version changes, element-level content changes (functions, categories, subcategories) and successor CSF releases, and downloads a new release in full.",
     check: checkCprtCsf,
+    fetchContent: fetchCprtCsfContent,
   },
   {
     id: "nist-sp80053-oscal",
@@ -207,6 +322,7 @@ export const nistConnectors: ConnectorDefinition[] = [
     framework: { family: "NIST SP 800-53" },
     description: "Reads the official OSCAL catalog published by NIST on GitHub (ETag-conditional). Detects catalog version changes and controls added or withdrawn, and compares against the workbook's cited release.",
     check: checkOscal80053,
+    fetchContent: () => fetchOscal80053Content(),
   },
   {
     id: "nist-csf2-document",

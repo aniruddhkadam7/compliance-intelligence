@@ -3,7 +3,8 @@ import { handle, HttpError, requireWriter } from "@/lib/auth/server";
 import { ensureConnectors, getDefinition, runConnectorCheck } from "@/lib/connectors/registry";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// A check that finds a new version may also download it in full.
+export const maxDuration = 300;
 
 /** Manual "Check now". Records results and detected updates for review. */
 export const POST = handle(async (_req: Request, ctx: { params: Promise<{ id: string }> }) => {

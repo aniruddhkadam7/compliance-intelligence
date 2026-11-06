@@ -60,6 +60,24 @@ export function UpdateCentre() {
     router.refresh();
   }
 
+  // Download the newest version from the publisher, where it publishes the framework as data, and prepare it as an update.
+  async function getNewVersion(id: string) {
+    const name = items.find((c) => c.id === id)?.name ?? id;
+    setRunning((r) => [...r, id]);
+    try {
+      const r = await apiSend<{ status: "UP_TO_DATE" | "ALREADY_PREPARED" | "PREPARED"; version: string; sections?: number }>(`/api/connectors/${id}/import`);
+      if (r.status === "PREPARED") toast.success(`${name}: version ${r.version} downloaded`, { description: `${r.sections} sections prepared as an update. It now shows as Update available in Sources.` });
+      else if (r.status === "ALREADY_PREPARED") toast.info(`${name}: version ${r.version} is already prepared as an update`);
+      else toast.success(`${name}: the library already has the newest version (${r.version})`);
+      qc.invalidateQueries();
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Download failed");
+    } finally {
+      setRunning((r) => r.filter((x) => x !== id));
+    }
+  }
+
   async function sync(id: string) {
     try {
       const r = await apiSend<{ previous: string | null; current: string | null }>(`/api/connectors/${id}/sync`);
@@ -106,7 +124,7 @@ export function UpdateCentre() {
           { label: "Last successful sync", value: <span className="text-[15px]">{formatRelative(lastSync)}</span>, sub: "Sources are monitored automatically" },
         ]}
       />
-      <ConnectorTable items={main} also={also} loading={connectors.isLoading} error={connectors.error} running={running} canWrite={canWrite} onCheck={(id) => check([id, ...(also[id] ?? []).map((c) => c.id)])} onSync={(id) => Promise.all([id, ...(also[id] ?? []).map((c) => c.id)].map(sync)).then(() => undefined)} onHistory={(id) => set({ history: id })} onReview={reviewFindings} />
+      <ConnectorTable items={main} also={also} loading={connectors.isLoading} error={connectors.error} running={running} canWrite={canWrite} onCheck={(id) => check([id, ...(also[id] ?? []).map((c) => c.id)])} onSync={(id) => Promise.all([id, ...(also[id] ?? []).map((c) => c.id)].map(sync)).then(() => undefined)} onHistory={(id) => set({ history: id })} onReview={reviewFindings} onGetVersion={getNewVersion} />
       <div className="my-3 flex items-start gap-2 text-[11px] text-muted">
         <Info className="mt-px size-3 shrink-0" />
         <span>

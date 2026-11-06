@@ -1,5 +1,5 @@
 "use client";
-import { CheckCircle2, CircleDashed, ExternalLink, History, Loader2, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
+import { CheckCircle2, CircleDashed, Download, ExternalLink, History, Loader2, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ export interface ConnectorRow {
   framework: { id: string; short: string; versionLabel: string | null } | null;
   lastCheck: { status: string; detectedVersion: string | null; message: string | null; httpStatus: number | null; durationMs: number | null } | null;
   openUpdates: number; totalChecks: number; nextCheckAt: string | null;
+  /** The publisher provides the framework as data, so this connector can download a new version in full. */
+  fetchesContent: boolean;
 }
 
 /** The connector's state. "N to review" is a button that opens those findings in the Update centre below. */
@@ -36,10 +38,10 @@ function Status({ c, onReview }: { c: ConnectorRow; onReview: (id: string) => vo
 const freq = (m: number) => (m % 1440 === 0 ? (m === 1440 ? "Daily" : `Every ${m / 1440} days`) : m % 60 === 0 ? `Every ${m / 60} h` : `Every ${m} min`);
 
 export function ConnectorTable({
-  items, also = {}, loading, error, running, canWrite, onCheck, onSync, onHistory, onReview,
+  items, also = {}, loading, error, running, canWrite, onCheck, onSync, onHistory, onReview, onGetVersion,
 }: {
   items: ConnectorRow[]; also?: Record<string, ConnectorRow[]>; loading: boolean; error: unknown; running: string[]; canWrite: boolean;
-  onCheck: (id: string) => void; onSync: (id: string) => void; onHistory: (id: string) => void; onReview: (id: string) => void;
+  onCheck: (id: string) => void; onSync: (id: string) => void; onHistory: (id: string) => void; onReview: (id: string) => void; onGetVersion: (id: string) => void;
 }) {
   return (
     <Card>
@@ -86,6 +88,11 @@ export function ConnectorTable({
                 <td className="px-3 py-3">
                   <div className="flex flex-wrap justify-end gap-1">
                     <Button size="sm" disabled={!canWrite || busy} onClick={() => onCheck(c.id)}>{busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} Check</Button>
+                    {c.fetchesContent && (
+                      <Tooltip content="Download the newest version from the publisher and prepare it as an update in Sources">
+                        <Button size="sm" disabled={!canWrite || busy} onClick={() => onGetVersion(c.id)}><Download /> Get new version</Button>
+                      </Tooltip>
+                    )}
                     <Tooltip content={versionDiff ? `Adopt ${detected} as the current version` : "Adopt the latest detected state as baseline"}>
                       <Button size="sm" variant={versionDiff ? "primary" : "ghost"} disabled={!canWrite || !c.lastCheck || c.lastStatus === "ERROR"} onClick={() => onSync(c.id)}>Sync</Button>
                     </Tooltip>

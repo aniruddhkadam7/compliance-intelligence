@@ -37,6 +37,29 @@ export interface CheckResult {
   details?: Record<string, unknown>;
 }
 
+/** One section of a framework version, copied verbatim from the publisher's official data. */
+export interface FetchedSection {
+  identifier: string;
+  title: string;
+  text: string;
+  /** Headings above the section, e.g. ["Govern (GV)", "Organizational Context (OC)"]. */
+  path: string[];
+  parentIdentifier?: string | null;
+  contentType?: string;
+}
+
+/** A complete framework version downloaded from the publisher. */
+export interface FetchedContent {
+  version: string;
+  title: string;
+  shortTitle: string;
+  publisher: string;
+  documentType: string;
+  publishedDate: string | null;
+  sourceUrl: string;
+  sections: FetchedSection[];
+}
+
 export interface ConnectorDefinition {
   id: string;
   name: string;
@@ -50,4 +73,9 @@ export interface ConnectorDefinition {
   framework: { family: string; version?: string } | null;
   description: string;
   check: (ctx: CheckContext) => Promise<CheckResult>;
+  /**
+   * Downloads the full newest version the connector sees, where the publisher provides it as data. Connectors without
+   * it only detect versions; their new versions are uploaded in the Admin Console.
+   */
+  fetchContent?: (ctx: { state: Record<string, unknown> | null }) => Promise<FetchedContent>;
 }

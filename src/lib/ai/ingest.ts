@@ -431,6 +431,45 @@ export async function summariseChanges(previous: string, current: string, relati
   }
 }
 
+// --- Official data (no AI extraction) ------------------------------------------------------------------
+
+/** A framework version supplied as structured data by its publisher, e.g. downloaded by a monitoring connector. */
+export interface StructuredContent {
+  version: string; title: string; shortTitle: string; publisher: string; documentType: string; publishedDate: string | null; sourceUrl: string;
+  sections: { identifier: string; title: string; text: string; path: string[]; parentIdentifier?: string | null; contentType?: string }[];
+}
+
+/**
+ * Creates a draft new version of a library document from the publisher's own data. Every section is copied verbatim,
+ * so there is nothing for AI to locate or verify; the comparison with the current version runs as for an upload.
+ * `release` marks it as released at once, so users see "Update available" in Sources.
+ */
+export async function startStructuredIngestion(content: StructuredContent, frameworkId: string, actor: string, origin: { name: string; release?: { by: string; at: string } }) {
+  const fw = await prisma.framework.findUniqueOrThrow({ where: { id: frameworkId }, select: { id: true, name: true, family: true } });
+  const detected = {
+    title: content.title, shortTitle: content.shortTitle, publisher: content.publisher, version: content.version, publishedDate: content.publishedDate ?? "",
+    documentType: content.documentType, jurisdiction: "", libraryFamily: fw.family ?? "NONE", notes: "", libraryVersion: content.version,
+    checks: { targetFramework: fw.name, familyMatches: true }, source: { connector: origin.name, url: content.sourceUrl }, ...(origin.release && { release: origin.release }),
+  };
+  const ing = await prisma.aiIngestion.create({
+    data: {
+      fileName: `${origin.name} (official data)`, fileHash: createHash("sha256").update(JSON.stringify(content.sections)).digest("hex"),
+      status: "EXTRACTING", model: "none (official data)", text: "", pages: 0, chunks: 0,
+      detected: json(detected), matchFrameworkId: fw.id, matchKind: "NEW_VERSION", createdBy: actor,
+    },
+  });
+  for (let i = 0; i < content.sections.length; i += 500)
+    await prisma.aiDraftSection.createMany({
+      data: content.sections.slice(i, i + 500).map((s, j) => ({
+        ingestionId: ing.id, ordinal: i + j + 1, identifier: s.identifier, title: s.title, path: json(s.path), text: s.text,
+        verified: true, include: true, contentType: s.contentType ?? null, parentIdentifier: s.parentIdentifier ?? null, confidence: 1,
+      })),
+    });
+  await prisma.auditLog.create({ data: { actor, action: "AI_IMPORT_STARTED", entity: "AiIngestion", entityId: ing.id, details: json({ source: origin.name, version: content.version, sections: content.sections.length }) } });
+  await finalize(ing.id);
+  return ing.id;
+}
+
 // --- Publishing -----------------------------------------------------------------------------------------
 
 export interface PublishInput { mode: "NEW_VERSION" | "NEW_DOCUMENT" | "SAME_VERSION"; parentSourceId?: string; name?: string; versionLabel?: string; targetFrameworkId?: string; note?: string }

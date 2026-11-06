@@ -23,6 +23,7 @@ export const GET = handle(async () => {
       return {
         ...c,
         description: def?.description ?? "",
+        fetchesContent: !!def?.fetchContent,
         mechanismLabel: MECHANISM_LABEL[c.mechanism as keyof typeof MECHANISM_LABEL] ?? c.mechanism,
         framework: c.framework ? { ...c.framework, short: shortName(c.framework.name) } : null,
         lastCheck: c.checks[0] ?? null,

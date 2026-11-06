@@ -70,7 +70,18 @@ export async function runConnectorCheck(id: string, opts: { trigger: "MANUAL" | 
       });
       await tx.auditLog.create({ data: { actor: opts.actor ?? "scheduler", action: "CONNECTOR_CHECK", entity: "Connector", entityId: id, details: json({ status, changes: result.changes.length, trigger: opts.trigger }) } });
     });
-    return { status, message: result.message, changes: result.changes.length, detectedVersion: result.detectedVersion };
+    // A newer version found by a connector that can download it is prepared as an update straight away.
+    let prepared: string | null = null;
+    if (def.fetchContent && result.changes.some((c) => c.changeType === "VERSION_CHANGE" || c.changeType === "NEW_PUBLICATION")) {
+      try {
+        const { importConnectorContent } = await import("./content");
+        const r = await importConnectorContent(id, opts.actor ?? "scheduler");
+        if (r.status === "PREPARED") prepared = r.version;
+      } catch (e) {
+        console.error(`Connector ${id}: the new version could not be downloaded`, e);
+      }
+    }
+    return { status, message: result.message, changes: result.changes.length, detectedVersion: result.detectedVersion, prepared };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     await prisma.$transaction([
