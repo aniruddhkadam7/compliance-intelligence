@@ -1,11 +1,10 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@/components/shell/nav-progress";
-import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
-import { ArrowRight, BellRing, Check, FileSpreadsheet, History, Loader2, Search, X } from "lucide-react";
+import { ArrowRight, BellRing, Check, FileSpreadsheet, History, Search, X } from "lucide-react";
 import { EmptyState, Mono, Page, PageHeader } from "@/components/common";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,8 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { DataTable } from "@/components/data-table";
-import { apiGet, apiSend, qs } from "@/lib/client/api";
-import { useMe } from "@/lib/client/use-me";
+import { apiGet, qs } from "@/lib/client/api";
 import { useDebounced, useUrlState } from "@/lib/client/hooks";
 import { CONTROL_DEFAULTS } from "@/lib/client/prefetch";
 import { cn, formatDateTime, formatNumber } from "@/lib/utils";
@@ -22,8 +20,8 @@ import { TERMS } from "@/lib/terms";
 import { ClientControlActions } from "@/components/client-control-actions";
 
 /** A framework update applied in Sources as it affects a control: yellow until its mapping is approved, then green. */
-interface UpdateFlag { key: string; family: string; previous: string; current: string; state: "pending" | "updated" }
-interface AppliedUpdate { key: string; family: string; previous: string; current: string; uploadedAfter: boolean; affected: number; approved: number }
+interface UpdateFlag { key: string; family: string; previous: string; current: string; state: "pending" | "updated" | "rejected" }
+interface AppliedUpdate { key: string; family: string; previous: string; current: string; uploadedAfter: boolean; affected: number; approved: number; rejected: number }
 
 interface ControlRow {
   id: string; controlName: string; title: string | null; category: string | null; subCategory: string | null; scope: string | null;
@@ -68,42 +66,10 @@ export function ControlRegister() {
     }>("/api/controls?view=facets"),
   });
 
-  // Client scope: which controls count in coverage, gaps and update flags. Writers can change it.
-  const qc = useQueryClient();
-  const canWrite = !!useMe().data?.canWrite;
-  const [saving, setSaving] = useState<string | null>(null);
-  const changeScope = async (body: { ids: string[]; inScope: boolean } | { preset: "all" | "selection" }, key: string) => {
-    setSaving(key);
-    try {
-      await apiSend("/api/controls", body, "PATCH");
-      await qc.invalidateQueries();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Scope change failed.");
-    } finally {
-      setSaving(null);
-    }
-  };
   const fam = facets.data?.frameworks.find((f) => f.family === s.family);
 
   const columns = useMemo<ColumnDef<ControlRow, unknown>[]>(() => [
-    {
-      id: "inScope", header: "In scope", size: 84, enableSorting: false,
-      cell: ({ row }) => {
-        const c = row.original;
-        if (!canWrite) return c.inScope ? <Badge tone="success">In scope</Badge> : <Badge tone="outline">Out of scope</Badge>;
-        return (
-          <button
-            role="switch" aria-checked={c.inScope} aria-label={`${c.controlName} in scope`} disabled={!!saving}
-            title={c.inScope ? "In the client's scope. Select to exclude." : "Out of scope. Select to include."}
-            onClick={(e) => { e.stopPropagation(); changeScope({ ids: [c.id], inScope: !c.inScope }, c.id); }}
-            className={cn("grid size-5 place-items-center rounded border transition-colors", c.inScope ? "border-success bg-success text-white" : "border-border-strong bg-surface hover:border-fg")}
-          >
-            {saving === c.id ? <Loader2 className="size-3 animate-spin" /> : c.inScope && <Check className="size-3.5" />}
-          </button>
-        );
-      },
-    },
-    { id: "controlName", header: "Control ID", size: 160, cell: ({ row }) => <span className={cn("flex flex-wrap items-center gap-2", !row.original.inScope && "opacity-50")}><Mono className="whitespace-nowrap font-medium text-fg">{row.original.controlName}</Mono>{row.original.inClientSelection && <Badge tone="outline" title="Listed on the workbook's client selection sheet (CCFv2)">Client selection</Badge>}</span> },
+    { id: "controlName", header: "Control ID", size: 160, cell: ({ row }) => <span className="flex flex-wrap items-center gap-2"><Mono className="whitespace-nowrap font-medium text-fg">{row.original.controlName}</Mono></span> },
     {
       id: "frameworkUpdate", header: "Framework update", size: 190, enableSorting: false,
       cell: ({ row }) => {
@@ -111,23 +77,25 @@ export function ControlRegister() {
         if (!us.length) return <span className="text-xs text-subtle">—</span>;
         return (
           <span className="flex flex-col items-start gap-1">
-            {us.map((u) => u.state === "pending"
+            {us.map((u) => u.state === "rejected"
+              ? <Badge key={u.key} tone="warning" title={`Rejected: this control stays on ${u.family} ${u.previous}. It can be reconsidered in ${TERMS.versionImpact}.`}><X /> {u.family} {u.previous} · rejected</Badge>
+              : u.state === "pending"
               ? <Badge key={u.key} tone="warning" title={`Mapped to ${u.family} ${u.previous}; approve the move to ${u.current} in Change Analytics`}><BellRing /> {u.family} {u.previous} → {u.current}</Badge>
               : <Badge key={u.key} tone="success" title={`Mapping approved: now points to ${u.family} ${u.current}`}><Check /> {u.family} {u.current}</Badge>)}
           </span>
         );
       },
     },
-    { id: "title", header: "Control title", cell: ({ row }) => <div className={cn("line-clamp-2 text-fg", !row.original.inScope && "opacity-50")}>{row.original.title ?? <span className="text-subtle">No title</span>}</div> },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [canWrite, saving]);
-  const scope = facets.data?.scope;
+    { id: "title", header: "Control title", cell: ({ row }) => <div className="line-clamp-2 text-fg">{row.original.title ?? <span className="text-subtle">No title</span>}</div> },
+  ], []);
 
   // Framework updates applied in Sources. Yellow until every affected control's mapping is approved, then green.
   const updates = facets.data?.updates ?? [];
   const done = (u: AppliedUpdate) => u.approved >= u.affected;
-  const pending = updates.filter((u) => !done(u)).reduce((n, u) => n + u.affected - u.approved, 0);
-  const active = !!(s.q || s.mapping || s.family || s.category || s.scope || s.prefix || s.inScope);
+  const pending = updates.filter((u) => !done(u)).reduce((n, u) => n + u.affected - u.approved - u.rejected, 0);
+  const rejected = updates.reduce((n, u) => n + u.rejected, 0);
+  const open = updates.some((u) => !done(u));
+  const active = !!(s.q || s.mapping || s.family || s.category || s.scope || s.prefix);
   const opts = (xs?: { value: string; count: number }[]) => (xs ?? []).map((x) => ({ value: x.value, label: x.value, hint: formatNumber(x.count) }));
 
   // Client layer is empty until the client uploads its controls.
@@ -162,16 +130,16 @@ export function ControlRegister() {
         ) : null}
       />
       {updates.length > 0 && (
-        <Card className={cn("mb-4", pending ? "border-warning/50" : "border-success/40")}>
+        <Card className={cn("mb-4", open ? "border-warning/50" : "border-success/40")}>
           <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-            {pending ? <BellRing className="size-4 text-warning" /> : <Check className="size-4 text-success" />}
+            {open ? <BellRing className="size-4 text-warning" /> : <Check className="size-4 text-success" />}
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold text-fg">{pending ? "Framework updates affect the client's controls" : "Client controls are on the latest framework versions"}</div>
+              <div className="text-[13px] font-semibold text-fg">{open ? "Framework updates affect the client's controls" : "Client controls are on the latest framework versions"}</div>
               <div className="text-xs text-muted">
-                {pending ? `${formatNumber(pending)} control mapping(s) await approval in ${TERMS.versionImpact}; until then they stay on the previous version.` : "Every affected control's mapping has been approved."}
+                {pending ? `${formatNumber(pending)} control mapping(s) await approval in ${TERMS.versionImpact}; until then they stay on the previous version.${rejected ? ` ${formatNumber(rejected)} rejected.` : ""}` : open ? `Every control has been reviewed. ${formatNumber(rejected)} rejected control(s) stay on the previous version.` : "Every affected control's mapping has been approved."}
               </div>
             </div>
-            {pending > 0 && (
+            {open && (
               <Button size="sm" variant={s.mapping === "update" ? "primary" : "secondary"} onClick={() => set({ mapping: s.mapping === "update" ? "" : "update", frameworkId: "", family: "", page: "1" })}>
                 {s.mapping === "update" ? "Show all controls" : "Show affected controls"}
               </Button>
@@ -184,11 +152,11 @@ export function ControlRegister() {
                 <li key={u.key} className={cn("flex flex-col gap-2 rounded-md border p-3 text-xs transition-colors", ok ? "border-success/40 bg-success-soft" : "border-warning/50 bg-warning-soft")}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-[13px] font-semibold text-fg">{u.family}</span>
-                    <Badge tone={ok ? "success" : "warning"}>{ok ? "Updated" : "Approval pending"}</Badge>
+                    <Badge tone={ok ? "success" : "warning"}>{ok ? "Updated" : u.approved + u.rejected >= u.affected ? "Reviewed" : "Approval pending"}</Badge>
                   </div>
                   <div className="font-medium text-fg-2">Newer version: {u.family} {u.previous} <ArrowRight className="inline size-3" /> {u.current}</div>
                   <div className="text-muted">
-                    {u.uploadedAfter ? `Controls uploaded after the update map to ${u.current}` : `${formatNumber(u.approved)} of ${formatNumber(u.affected)} affected control${u.affected === 1 ? "" : "s"} approved`}
+                    {u.uploadedAfter ? `Controls uploaded after the update map to ${u.current}` : `${formatNumber(u.approved)} of ${formatNumber(u.affected)} affected control${u.affected === 1 ? "" : "s"} approved${u.rejected ? ` · ${formatNumber(u.rejected)} rejected` : ""}`}
                   </div>
                   <div className="mt-auto flex items-center justify-between gap-2 pt-1">
                     <Link href={`/change-analytics?update=${u.key}`} className="font-medium text-fg underline-offset-2 hover:underline">{formatNumber(u.affected)} control{u.affected === 1 ? "" : "s"} affected</Link>
@@ -198,26 +166,6 @@ export function ControlRegister() {
               );
             })}
           </ul>
-        </Card>
-      )}
-      {scope && scope.total > 0 && (
-        <Card className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <div className="min-w-0 flex-1 text-[13px]">
-            <div className="font-semibold text-fg">Client scope: {formatNumber(scope.inScope)} of {formatNumber(scope.total)} controls</div>
-            <div className="text-xs text-muted">
-              Controls in scope count in coverage, gaps and framework update flags; out-of-scope controls stay visible and mapped.
-              {scope.selection > 0 && ` The workbook lists ${formatNumber(scope.selection)} as the client's selection (CCFv2).`}
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant={s.inScope === "out" ? "primary" : "secondary"} onClick={() => set({ inScope: s.inScope === "out" ? "" : "out", page: "1" })}>{formatNumber(scope.total - scope.inScope)} out of scope</Button>
-            {canWrite && scope.inScope < scope.total && (
-              <Button size="sm" disabled={!!saving} onClick={() => changeScope({ preset: "all" }, "all")}>{saving === "all" && <Loader2 className="animate-spin" />}Include all {formatNumber(scope.total)}</Button>
-            )}
-            {canWrite && scope.selection > 0 && (scope.inScope !== scope.selection || scope.selectionInScope !== scope.selection) && (
-              <Button size="sm" disabled={!!saving} onClick={() => changeScope({ preset: "selection" }, "selection")}>{saving === "selection" && <Loader2 className="animate-spin" />}Only the client selection ({formatNumber(scope.selection)})</Button>
-            )}
-          </div>
         </Card>
       )}
       <Card>
@@ -238,11 +186,6 @@ export function ControlRegister() {
               aria-label="Filter by framework version"
             />
           )}
-          <Select
-            value={s.inScope} onChange={(v) => set({ inScope: v, page: "1" })} allLabel="All controls" placeholder="Client scope"
-            options={[{ value: "in", label: "In scope" }, { value: "out", label: "Out of scope" }, ...(scope?.selection ? [{ value: "selection", label: "Client selection (CCFv2)" }] : [])]}
-            aria-label="Filter by client scope"
-          />
           <Select value={s.category} onChange={(v) => set({ category: v })} allLabel="All categories" placeholder="Category" options={opts(facets.data?.categories)} aria-label="Filter by category" />
           <Select value={s.scope} onChange={(v) => set({ scope: v })} allLabel="All scopes" placeholder="Scope" options={opts(facets.data?.scopes)} aria-label="Filter by scope" />
           <Select value={s.prefix} onChange={(v) => set({ prefix: v })} allLabel="All domains" placeholder="Domain" options={opts(facets.data?.prefixes)} aria-label="Filter by control domain" />

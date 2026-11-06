@@ -32,7 +32,7 @@ const approvingUpdates = (v: Versions) => v.updates.filter((u) => u.status === "
 
 function updateFlags(v: Versions, controlName: string): ControlUpdateFlag[] {
   return approvingUpdates(v).filter((u) => u.affected.has(controlName))
-    .map((u) => ({ key: u.key, family: u.family, previous: u.previous, current: u.current, state: u.approved.has(controlName) ? "updated" : "pending" }));
+    .map((u) => ({ key: u.key, family: u.family, previous: u.previous, current: u.current, state: u.approved.has(controlName) ? "updated" : u.rejected.has(controlName) ? "rejected" : "pending" }));
 }
 
 /**
@@ -168,6 +168,7 @@ export async function controlFacets() {
       return {
         key: u.key, family: u.family, previous: u.previous, current: u.current, uploadedAfter: u.uploadedAfter,
         affected: affected.length, approved: u.uploadedAfter ? affected.length : affected.filter((n) => u.approved.has(n)).length,
+        rejected: u.uploadedAfter ? 0 : affected.filter((n) => u.rejected.has(n)).length,
       };
     }),
   };
@@ -259,7 +260,7 @@ export async function getControl(idOrName: string) {
     procedureTrace,
     controlLevel,
     citationTotal: c.obligations.length,
-    /** Framework documents of an applied update: "pending" (previous version, awaiting approval) or "updated" (approved). */
+    /** Framework documents of an applied update: "pending" (awaiting approval), "rejected" (kept on the previous version) or "updated" (approved). */
     versionFlags: Object.fromEntries(highlight) as Record<string, Highlight>,
     frameworkUpdates: updateFlags(v, c.controlName),
   };

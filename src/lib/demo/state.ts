@@ -14,17 +14,19 @@ import { versionOf } from "@/lib/sources/previous-versions";
 import { affectedControlNames } from "@/lib/updates/reference-impact";
 
 /**
- * The updates offered, with the publication date of the newer version. Frameworks with a monitoring connector (NIST CSF,
- * EU AI Act) appear in Sources as "Update available" automatically. The others have no connector, so an admin first
- * releases the newer version in the Admin console (`release: true`); users then see it in Sources.
+ * The updates offered. NIST CSF, EU AI Act, ISO/IEC 27001 and ISO/IEC 27002 appear in Sources as "Update available" on
+ * their own, as the team asked for the steady state. Only NIST CSF and EU AI Act have a monitoring connector; for the ISO
+ * standards the row says the newer version comes from the Source Document Library. CIS Controls and CSA CCM need an
+ * admin to release them in the Admin console first (`release: true`).
+ * Publication dates are not kept here; Sources reads them from src/data/publication-dates.json.
  */
 export const DEMO_UPDATES = [
-  { key: "nist-csf", family: "NIST CSF", previous: "1.1", current: "2.0", published: "2024-02-26", release: false },
-  { key: "cis-controls", family: "CIS Controls", previous: "8", current: "8.1", published: "2024-06-24", release: true },
-  { key: "iso-27001", family: "ISO/IEC 27001", previous: "2013", current: "2022", published: "2022-10-25", release: true },
-  { key: "iso-27002", family: "ISO/IEC 27002", previous: "2013", current: "2022", published: "2022-02-15", release: true },
-  { key: "eu-ai-act", family: "EU AI Act", previous: "2024", current: "2026", published: "2026-07-27", release: false },
-  { key: "csa-ccm", family: "CSA CCM", previous: "4.0", current: "4.1.1", published: "2026-01-27", release: true },
+  { key: "nist-csf", family: "NIST CSF", previous: "1.1", current: "2.0", release: false },
+  { key: "cis-controls", family: "CIS Controls", previous: "8", current: "8.1", release: true },
+  { key: "iso-27001", family: "ISO/IEC 27001", previous: "2013", current: "2022", release: false },
+  { key: "iso-27002", family: "ISO/IEC 27002", previous: "2013", current: "2022", release: false },
+  { key: "eu-ai-act", family: "EU AI Act", previous: "2024", current: "2026", release: false },
+  { key: "csa-ccm", family: "CSA CCM", previous: "4.0", current: "4.1.1", release: true },
 ] as const;
 export type DemoKey = (typeof DEMO_UPDATES)[number]["key"];
 export const DEMO_KEYS = DEMO_UPDATES.map((u) => u.key) as [DemoKey, ...DemoKey[]];
@@ -36,13 +38,15 @@ export interface DemoState {
   uploadedAfter: Partial<Record<DemoKey, boolean>>;
   /** Per update: controls whose mapping to the new version was approved in Change Analytics. */
   approved: Partial<Record<DemoKey, string[]>>;
+  /** Per update: controls the reviewer rejected; they stay on the previous version until reconsidered or approved. */
+  rejected?: Partial<Record<DemoKey, string[]>>;
   /** Per update that needs it: released to users by an admin. */
   released?: Partial<Record<DemoKey, boolean>>;
 }
 
 const KEY = "demo";
 /** A fresh demo-ready state (a new object each time, so updates never alter the default). */
-const empty = (): DemoState => ({ updates: {}, uploadedAfter: {}, approved: {}, released: {} });
+const empty = (): DemoState => ({ updates: {}, uploadedAfter: {}, approved: {}, rejected: {}, released: {} });
 
 export async function getDemoState(): Promise<DemoState> {
   const row = await prisma.demoState.findUnique({ where: { key: KEY } });
@@ -85,6 +89,25 @@ export async function approveControls(key: DemoKey, controls: string[]) {
   const s = await getDemoState();
   if (statusOf(s, key) !== "UPDATED") throw new Error("Apply the update in Sources before approving mappings.");
   s.approved[key] = [...new Set([...(s.approved[key] ?? []), ...controls])];
+  s.rejected = { ...s.rejected, [key]: (s.rejected?.[key] ?? []).filter((c) => !controls.includes(c)) };
+  await save(s);
+}
+
+/** Keeps the listed controls on the previous version. Not permanent: reconsider or approve them later. */
+export async function rejectControls(key: DemoKey, controls: string[]) {
+  const s = await getDemoState();
+  if (statusOf(s, key) !== "UPDATED") throw new Error("Apply the update in Sources before reviewing mappings.");
+  s.rejected = { ...s.rejected, [key]: [...new Set([...(s.rejected?.[key] ?? []), ...controls])] };
+  s.approved[key] = (s.approved[key] ?? []).filter((c) => !controls.includes(c));
+  await save(s);
+}
+
+/** Puts controls back to "awaiting approval": undoes an approval or a rejection. */
+export async function reconsiderControls(key: DemoKey, controls: string[]) {
+  const s = await getDemoState();
+  if (statusOf(s, key) !== "UPDATED") throw new Error("Apply the update in Sources before reviewing mappings.");
+  s.approved[key] = (s.approved[key] ?? []).filter((c) => !controls.includes(c));
+  s.rejected = { ...s.rejected, [key]: (s.rejected?.[key] ?? []).filter((c) => !controls.includes(c)) };
   await save(s);
 }
 
@@ -93,6 +116,7 @@ export async function recordControlUpload() {
   const s = await getDemoState();
   s.uploadedAfter = Object.fromEntries(DEMO_KEYS.map((k) => [k, statusOf(s, k) === "UPDATED"]));
   s.approved = {};
+  s.rejected = {};
   await save(s);
 }
 
@@ -119,7 +143,7 @@ export async function uninstalledVersions() {
   return fws.filter((u) => statusOf(s, u.key) !== "UPDATED" && u.currentId).map((u) => u.currentId!);
 }
 
-export type Highlight = "pending" | "updated";
+export type Highlight = "pending" | "updated" | "rejected";
 
 /**
  * Which framework version each client control points to. `hidden` holds the documents a control must not show;
@@ -133,6 +157,7 @@ export async function controlVersions() {
     status: statusOf(s, u.key),
     uploadedAfter: !!s.uploadedAfter[u.key],
     approved: new Set(s.approved[u.key] ?? []),
+    rejected: new Set(s.rejected?.[u.key] ?? []),
     affected: await affectedControlNames(u.key),
   })));
   const resolve = (controlName: string) => {
@@ -143,7 +168,7 @@ export async function controlVersions() {
       const onNew = u.status === "UPDATED" && (u.uploadedAfter || !u.affected.has(controlName) || u.approved.has(controlName));
       hidden.add(onNew ? u.previousId : u.currentId);
       if (u.status === "UPDATED" && !u.uploadedAfter && u.affected.has(controlName))
-        highlight.set(onNew ? u.currentId : u.previousId, onNew ? "updated" : "pending");
+        highlight.set(onNew ? u.currentId : u.previousId, onNew ? "updated" : u.rejected.has(controlName) ? "rejected" : "pending");
     }
     return { hidden, highlight };
   };

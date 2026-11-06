@@ -4,7 +4,7 @@
  */
 export const TERMS = {
   overview: "Overview", // shown with the subtitle "Framework Catalog"
-  frameworks: "Framework Repository",
+  frameworks: "Source Document Library", // previously "Framework Repository"
   sources: "Sources",
   sourceIndex: "Source Index",
   sourceDetails: "Source Details",

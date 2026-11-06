@@ -221,7 +221,7 @@ function PreviousVersionRecords() {
     <Card className="mt-4 flex flex-wrap items-center gap-3 p-4">
       <div className="min-w-0 flex-1 text-[13px]">
         <div className="font-medium text-fg">Previous-version records</div>
-        <div className="text-xs text-muted">The version each document replaced, with the publisher facts and official source, shown in Sources and the Framework Repository. Fills empty records only; existing values are never overwritten.</div>
+        <div className="text-xs text-muted">The version each document replaced, with the publisher facts and official source, shown in Sources and the Source Document Library. Fills empty records only; existing values are never overwritten.</div>
       </div>
       <Button size="sm" disabled={busy} onClick={run}>{busy ? <Loader2 className="animate-spin" /> : <History />} Fill missing records</Button>
     </Card>

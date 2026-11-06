@@ -32,7 +32,7 @@ export const KIND: Record<Kind, { label: string; tone: Tone; color: string }> = 
   REMOVED: { label: "Removed", tone: "danger", color: "#d1293d" },
 };
 
-interface Flow { status: "AVAILABLE" | "UPDATED" | "REJECTED"; uploadedAfter: boolean; approved: string[] }
+interface Flow { status: "AVAILABLE" | "UPDATED" | "REJECTED"; uploadedAfter: boolean; approved: string[]; rejected: string[] }
 interface Summary extends Flow {
   key: string; family: string; previous: string; current: string;
   changedTestProcedures: number; totalTestProcedures: number; affectedControls: number; totalControls: number;
@@ -49,7 +49,7 @@ type Set_ = (p: Record<string, string>) => void;
 const label = (u: Summary) => `${u.family}: ${u.previous} → ${u.current}`;
 /** Approval is open once the update is applied in Sources, for controls uploaded before it. */
 const approving = (u: Flow) => u.status === "UPDATED" && !u.uploadedAfter;
-const pendingOf = (u: Summary) => (approving(u) ? u.affectedControls - u.approved.length : 0);
+const pendingOf = (u: Summary) => (approving(u) ? u.affectedControls - u.approved.length - u.rejected.length : 0);
 const hintOf = (u: Summary) =>
   u.status === "AVAILABLE" ? "Update not applied yet" : u.status === "REJECTED" ? "Update rejected" : u.uploadedAfter ? "Mapped to the new version"
     : pendingOf(u) ? `${pendingOf(u)} awaiting approval` : "All approved";
@@ -137,7 +137,20 @@ function useApprove(d: Detail) {
       toast.error(e instanceof Error ? e.message : "Approval failed");
     }
   };
-  return { approve, overlay: progress.overlay, running: progress.running };
+  // Rejecting keeps controls on the previous version; reconsidering undoes an approval or a rejection. Neither is permanent.
+  const review = async (action: "reject-controls" | "reconsider-controls", names: string[]) => {
+    if (!names.length) return;
+    const who = names.length === 1 ? names[0] : `${names.length} controls`;
+    try {
+      await apiSend("/api/demo", { action, key: d.key, controls: names });
+      if (action === "reject-controls") toast.info(`${who} rejected`, { description: `Stays on ${d.family} ${d.previous}. You can reconsider it at any time.` });
+      else toast.info(`${who} back to awaiting approval`);
+      await qc.invalidateQueries();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    }
+  };
+  return { approve, reject: (n: string[]) => review("reject-controls", n), reconsider: (n: string[]) => review("reconsider-controls", n), overlay: progress.overlay, running: progress.running };
 }
 
 function FlowBanner({ d, onApproveAll, running }: { d: Detail; onApproveAll: () => void; running: boolean }) {
@@ -156,10 +169,12 @@ function FlowBanner({ d, onApproveAll, running }: { d: Detail; onApproveAll: () 
     return box("neutral", <X className="size-4 text-muted" />, <><b>Update rejected in Sources.</b> The client&apos;s controls stay on {d.family} {d.previous}.</>);
   if (d.uploadedAfter)
     return box("success", <CheckCircle2 className="size-4 text-success" />, <><b>Controls map to {d.family} {d.current}.</b> They were uploaded after the update was applied, so there is nothing to approve.</>);
+  if (!pending && d.rejected.length)
+    return box("warning", <CheckCircle2 className="size-4 text-warning" />, <><b>All {formatNumber(d.affectedControls)} affected controls reviewed.</b> {formatNumber(d.approved.length)} approved and now on {d.family} {d.current}; {formatNumber(d.rejected.length)} rejected and kept on {d.previous}. A rejected control can be reconsidered at any time.</>);
   if (!pending)
     return box("success", <CheckCircle2 className="size-4 text-success" />, <><b>All {formatNumber(d.affectedControls)} affected controls approved.</b> They now point to {d.family} {d.current}.</>);
   return box("warning", <BellRing className="size-4 text-warning" />,
-    <><b>{formatNumber(pending)} of {formatNumber(d.affectedControls)} affected controls await approval.</b> Approved controls move to {d.family} {d.current}; the rest stay on {d.previous}.</>,
+    <><b>{formatNumber(pending)} of {formatNumber(d.affectedControls)} affected controls await approval.</b> Approved controls move to {d.family} {d.current}; the rest stay on {d.previous}.{d.rejected.length ? ` ${formatNumber(d.rejected.length)} rejected.` : ""}</>,
     canWrite && <Button size="sm" variant="primary" disabled={running} onClick={onApproveAll}><Check /> Approve all ({formatNumber(pending)})</Button>);
 }
 
@@ -187,7 +202,7 @@ function FilterBar({ d, f, set, shown }: { d: Detail; f: Filters; set: Set_; sho
       </div>
       <Select
         value={f.status} onChange={(v) => set({ status: v, control: "" })} allLabel="Any approval status" aria-label="Approval status"
-        options={[{ value: "awaiting", label: "Awaiting approval" }, { value: "approved", label: "Approved" }]}
+        options={[{ value: "awaiting", label: "Awaiting approval" }, { value: "approved", label: "Approved" }, { value: "rejected", label: "Rejected" }]}
       />
       <Select
         value={f.family} onChange={(v) => set({ family: v, control: "" })} allLabel="All control families" aria-label="Control family"
@@ -202,19 +217,20 @@ function FilterBar({ d, f, set, shown }: { d: Detail; f: Filters; set: Set_; sho
 function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: string; control: string; filters: Filters; set: Set_ }) {
   // Controls matching the filters; everything below works on this view.
   const d = useMemo<Detail>(() => {
-    const done = new Set(full.approved);
+    const done = new Set(full.approved), no = new Set(full.rejected);
     const all = full.status === "UPDATED" && full.uploadedAfter;
+    const stateOf = (name: string) => (all || done.has(name) ? "approved" : no.has(name) ? "rejected" : "awaiting");
     const q = filters.q.trim().toLowerCase();
     const controls = full.controls.filter((c) =>
       (!filters.family || familyOfControl(c.controlName) === filters.family) &&
-      (!filters.status || (filters.status === "approved") === (all || done.has(c.controlName))) &&
+      (!filters.status || filters.status === stateOf(c.controlName)) &&
       (!q || `${c.controlName} ${c.title ?? ""}`.toLowerCase().includes(q) ||
         c.changed.some((t) => [...t.added, ...t.removed].some((x) => `${x.identifier} ${x.title}`.toLowerCase().includes(q)))));
     return { ...full, controls, changedTestProcedures: controls.reduce((n, c) => n + c.changed.length, 0) };
   }, [full, filters.q, filters.status, filters.family]);
   const filtered = !!(filters.q || filters.status || filters.family);
-  const { approve, overlay, running } = useApprove(d);
-  const approved = new Set(d.approved);
+  const { approve, reject, reconsider, overlay, running } = useApprove(d);
+  const approved = new Set(d.approved), rejectedSet = new Set(d.rejected);
   return (
     <>
       {overlay}
@@ -234,7 +250,7 @@ function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: s
         </CardBody>
       </Card>
 
-      <FlowBanner d={d} running={running} onApproveAll={() => approve(d.controls.map((c) => c.controlName).filter((n) => !approved.has(n)))} />
+      <FlowBanner d={d} running={running} onApproveAll={() => approve(d.controls.map((c) => c.controlName).filter((n) => !approved.has(n) && !rejectedSet.has(n)))} />
 
       <StatStrip
         className="xl:grid-cols-5"
@@ -253,7 +269,7 @@ function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: s
           <button key={id} onClick={() => set({ tab: id })} className={cn("rounded-md border px-3 py-1.5 text-xs", tab === id ? "border-accent bg-accent-soft text-accent" : "border-border text-muted hover:text-fg")}>{text}</button>
         ))}
       </div>
-      {tab === "controls" && <AffectedControls d={d} selected={control} set={set} approve={approve} running={running} filtered={filtered} />}
+      {tab === "controls" && <AffectedControls d={d} selected={control} set={set} approve={approve} reject={reject} reconsider={reconsider} running={running} filtered={filtered} />}
       {tab === "procedures" && <ChangedProcedures d={d} set={set} />}
       {tab === "analytics" && <Analytics d={full} />}
     </>
@@ -363,16 +379,18 @@ function ProcedurePanel({ d, panel, onClose, onSection }: { d: Detail; panel: Ex
  * mapping; a procedure or a section opens a detail panel on the right. Once the update is applied, each control can be
  * approved on its own or several at once.
  */
-function AffectedControls({ d, selected, set, approve, running, filtered }: { d: Detail; selected: string; set: Set_; approve: (names: string[]) => Promise<void>; running: boolean; filtered: boolean }) {
+function AffectedControls({ d, selected, set, approve, reject, reconsider, running, filtered }: { d: Detail; selected: string; set: Set_; approve: (names: string[]) => Promise<void>; reject: (names: string[]) => Promise<void>; reconsider: (names: string[]) => Promise<void>; running: boolean; filtered: boolean }) {
   const canWrite = !!useMe().data?.canWrite;
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [panel, setPanel] = useState<Panel>(null);
   const open = d.controls.find((c) => c.controlName === selected) ?? d.controls[0] ?? null;
-  const approved = new Set(d.approved);
+  const approved = new Set(d.approved), rejected = new Set(d.rejected);
   const mode = approving(d) && canWrite;
-  const open_ = d.controls.filter((c) => !approved.has(c.controlName)).map((c) => c.controlName);
+  // Controls still to be decided (neither approved nor rejected).
+  const open_ = d.controls.filter((c) => !approved.has(c.controlName) && !rejected.has(c.controlName)).map((c) => c.controlName);
   const toggle = (n: string) => setPicked((x) => { const y = new Set(x); if (y.has(n)) y.delete(n); else y.add(n); return y; });
   const run = async (names: string[]) => { await approve(names); setPicked(new Set()); };
+  const runReject = async (names: string[]) => { await reject(names); setPicked(new Set()); };
   const openSection = (s: Sec) => setPanel({ kind: "section", id: s.id });
   if (!d.controls.length)
     return filtered
@@ -388,7 +406,10 @@ function AffectedControls({ d, selected, set, approve, running, filtered }: { d:
           title={`Affected controls (${d.controls.length} of ${filtered ? d.affectedControls : d.totalControls})`}
           description={mode ? "Select controls to approve, or approve one at a time" : "Select a control to see what changed"}
           actions={mode && open_.length > 0 && (
-            <Button size="sm" variant="primary" disabled={running || !picked.size} onClick={() => run([...picked])}><Check /> Approve{picked.size ? ` (${picked.size})` : ""}</Button>
+            <span className="flex gap-1.5">
+              <Button size="sm" disabled={running || !picked.size} onClick={() => runReject([...picked])}><X /> Reject{picked.size ? ` (${picked.size})` : ""}</Button>
+              <Button size="sm" variant="primary" disabled={running || !picked.size} onClick={() => run([...picked])}><Check /> Approve{picked.size ? ` (${picked.size})` : ""}</Button>
+            </span>
           )}
         />
         {mode && open_.length > 0 && (
@@ -400,9 +421,10 @@ function AffectedControls({ d, selected, set, approve, running, filtered }: { d:
         <ul className="max-h-[640px] divide-y divide-border overflow-auto">
           {d.controls.map((c) => {
             const ok = approved.has(c.controlName) || (d.status === "UPDATED" && d.uploadedAfter);
+            const no = !ok && rejected.has(c.controlName);
             return (
-              <li key={c.controlName} className={cn("flex items-start gap-2 px-4 py-2.5 text-xs", open?.controlName === c.controlName && "bg-accent-soft/50", ok && approving(d) && "bg-success-soft/40")}>
-                {mode && (ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" /> : (
+              <li key={c.controlName} className={cn("flex items-start gap-2 px-4 py-2.5 text-xs", open?.controlName === c.controlName && "bg-accent-soft/50", ok && approving(d) && "bg-success-soft/40", no && "bg-warning-soft/40")}>
+                {mode && (ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" /> : no ? <X className="mt-0.5 size-4 shrink-0 text-warning" /> : (
                   <input type="checkbox" aria-label={`Select ${c.controlName}`} className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[#2e2e38]" checked={picked.has(c.controlName)} onChange={() => toggle(c.controlName)} />
                 ))}
                 <button onClick={() => set({ control: c.controlName })} className="min-w-0 flex-1 text-left">
@@ -410,8 +432,21 @@ function AffectedControls({ d, selected, set, approve, running, filtered }: { d:
                   {c.title && <div className="line-clamp-2 text-muted">{c.title}</div>}
                   <div className="mt-1"><Badge tone={ok && approving(d) ? "success" : d.uploadedAfter ? "neutral" : "warning"}>{c.changed.length} of {c.totalTestProcedures} changed{d.status === "UPDATED" && d.uploadedAfter ? " · mapped on upload" : ""}</Badge></div>
                 </button>
-                {mode && (ok ? <Badge tone="success"><Check /> Approved</Badge> : (
-                  <Button size="sm" disabled={running} onClick={() => run([c.controlName])}>Approve</Button>
+                {mode && (ok ? (
+                  <span className="flex flex-col items-end gap-1">
+                    <Badge tone="success"><Check /> Approved</Badge>
+                    <Button size="sm" variant="ghost" disabled={running} onClick={() => reconsider([c.controlName])}>Undo</Button>
+                  </span>
+                ) : no ? (
+                  <span className="flex flex-col items-end gap-1">
+                    <Badge tone="warning"><X /> Rejected</Badge>
+                    <Button size="sm" variant="ghost" disabled={running} onClick={() => reconsider([c.controlName])}>Reconsider</Button>
+                  </span>
+                ) : (
+                  <span className="flex flex-col gap-1">
+                    <Button size="sm" disabled={running} onClick={() => run([c.controlName])}>Approve</Button>
+                    <Button size="sm" variant="ghost" disabled={running} onClick={() => reject([c.controlName])}>Reject</Button>
+                  </span>
                 ))}
               </li>
             );
@@ -428,10 +463,20 @@ function AffectedControls({ d, selected, set, approve, running, filtered }: { d:
             ) : approved.has(open.controlName) ? (
               <span className="flex items-center gap-2">
                 <Badge tone="success"><Check /> Approved · {d.family} {d.current}</Badge>
+                <Button size="sm" variant="ghost" disabled={running || !!disabledWhy} title={disabledWhy ?? "Put this control back to awaiting approval"} onClick={() => reconsider([open.controlName])}>Undo</Button>
                 <Button asChild size="sm" variant="ghost"><Link href={`/controls/${encodeURIComponent(open.controlName)}`}>View control <ArrowRight /></Link></Button>
               </span>
+            ) : rejected.has(open.controlName) ? (
+              <span className="flex items-center gap-2">
+                <Badge tone="warning"><X /> Rejected · stays on {d.family} {d.previous}</Badge>
+                <Button size="sm" variant="ghost" disabled={running || !!disabledWhy} title={disabledWhy ?? "Put this control back to awaiting approval"} onClick={() => reconsider([open.controlName])}>Reconsider</Button>
+                <Button size="sm" variant="primary" disabled={running || !!disabledWhy} title={disabledWhy} onClick={() => run([open.controlName])}><Check /> Approve and Move</Button>
+              </span>
             ) : (
-              <Button size="sm" variant="primary" disabled={running || !!disabledWhy} title={disabledWhy} onClick={() => run([open.controlName])}><Check /> Approve and move to {d.family} {d.current}</Button>
+              <span className="flex items-center gap-2">
+                <Button size="sm" disabled={running || !!disabledWhy} title={disabledWhy ?? "Keep this control on the previous version"} onClick={() => reject([open.controlName])}><X /> Reject</Button>
+                <Button size="sm" variant="primary" disabled={running || !!disabledWhy} title={disabledWhy} onClick={() => run([open.controlName])}><Check /> Approve and Move</Button>
+              </span>
             )}
           />
           <div className="border-b border-border bg-surface-2 px-4 py-2.5 text-xs leading-relaxed text-muted"><ControlSummary d={d} c={open} /></div>

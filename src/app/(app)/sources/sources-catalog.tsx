@@ -4,8 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, BellRing, BookOpenText, Check, Download, ExternalLink, Globe, Library, Loader2, Plug, RefreshCw, ScanSearch, Search, X } from "lucide-react";
-import { MECHANISM_LABEL, type Mechanism } from "@/lib/connectors/types";
+import { ArrowRight, BellRing, BookOpenText, Check, Download, ExternalLink, Globe, Library, Loader2, RefreshCw, ScanSearch, Search, X } from "lucide-react";
 import { useProgressSteps, type ProgressStep } from "@/components/progress-steps";
 import { EmptyState, Mono, Page, PageHeader, StatStrip } from "@/components/common";
 import { Card } from "@/components/ui/card";
@@ -120,7 +119,7 @@ export function useCheckForUpdates() {
 
 /** A framework update offered in the demonstration flow, with the library documents of both versions. */
 export interface DemoUpdate {
-  key: string; family: string; previous: string; current: string; published: string;
+  key: string; family: string; previous: string; current: string; published: string | null;
   status: "AVAILABLE" | "UPDATED" | "REJECTED"; previousId: string | null; currentId: string | null;
   /** Released to users by an admin (updates that need no release are always released). */
   released: boolean;
@@ -144,7 +143,7 @@ const UPDATE_STEPS = (names: string[]): ProgressStep[] => [
  * Sources: every framework and document in the library with its current and latest version. Updates are applied
  * by selecting frameworks and choosing Update (or Reject to decline them).
  */
-export function SourcesCatalog({ docs, demo, role }: { docs: SourceRow[]; demo: DemoUpdate[]; role: Role }) {
+export function SourcesCatalog({ docs, demo, dates, role }: { docs: SourceRow[]; demo: DemoUpdate[]; dates: Record<string, string>; role: Role }) {
   const router = useRouter();
   const qc = useQueryClient();
   const [s, set] = useUrlState(DEFAULTS);
@@ -180,10 +179,14 @@ export function SourcesCatalog({ docs, demo, role }: { docs: SourceRow[]; demo: 
           rejected: u?.status === "REJECTED",
           current: versionLabel(u?.family ?? "", d.version),
           latest: found ? found.newValue : !offer ? versionLabel(u?.family ?? "", d.version) : u ? versionLabel(u.family, u.current) : imp!.version ?? d.latestCheck?.latestVersion ?? "New version",
-          published: u && (offer || u.status === "UPDATED") ? u.published : d.latestCheck?.publicationDate ?? d.publishedDate,
+          // The date of the version shown as "latest": from the workbook where it lists that version, else none.
+          published: u
+            ? (offer || u.status === "UPDATED" ? u.published : dates[d.sourceId] ?? null)
+            : found || imp?.released ? d.latestCheck?.publicationDate ?? d.publishedDate ?? null
+            : dates[d.sourceId] ?? d.latestCheck?.publicationDate ?? d.publishedDate,
         };
       });
-  }, [docs, demo]);
+  }, [docs, demo, dates]);
   type Row = (typeof rowsAll)[number];
   // A framework is connected when a monitoring connector watches any version of it.
   const connectorsOf = (d: SourceRow) => {
@@ -295,7 +298,7 @@ export function SourcesCatalog({ docs, demo, role }: { docs: SourceRow[]; demo: 
                 options={[...APPLICABILITY_TAGS.map((t) => ({ value: t, label: t, hint: latest.filter((d) => d.applicability.tags.includes(t)).length })), { value: "NONE", label: "Not classified", hint: latest.filter((d) => !d.applicability.tags.length).length }]}
               />
               <Select value={s.status} onChange={(v) => set({ status: v })} allLabel="Any update status" options={STATUS_FILTERS.map((x) => ({ ...x, hint: rowsAll.filter((r) => r.status === x.value).length }))} aria-label="Update status" />
-              <Select value={s.source} onChange={(v) => set({ source: v })} allLabel="Any source" options={[{ value: "connected", label: "Connected (automatic)", hint: connectedCount }, { value: "manual", label: "Manual upload", hint: rowsAll.length - connectedCount }]} aria-label="Source" />
+              <Select value={s.source} onChange={(v) => set({ source: v })} allLabel="Any monitoring" options={[{ value: "connected", label: "Monitored by a connector", hint: connectedCount }, { value: "manual", label: "Not monitored", hint: rowsAll.length - connectedCount }]} aria-label="Monitoring" />
               {active && <Button variant="ghost" size="sm" onClick={() => set({ q: "", type: "", publisher: "", applicability: "", status: "", source: "" })}><X /> Clear</Button>}
             </div>
             <div className="px-4 py-2 text-xs text-muted tabular">{s.source === "connected" ? `${rows.length} connectors` : `${rows.length} of ${rowsAll.length} documents`} · select a name for details</div>
@@ -314,7 +317,7 @@ export function SourcesCatalog({ docs, demo, role }: { docs: SourceRow[]; demo: 
                     </th>
                     <th className="px-3 py-2">Framework / document</th><th className="px-3 py-2">Type</th>
                     <th className="px-3 py-2">Current version</th><th className="px-3 py-2">Latest version</th>
-                    <th className="px-3 py-2">Last published date</th><th className="px-3 py-2">Connector</th><th className="px-3 py-2">Update status</th>
+                    <th className="px-3 py-2">Last published date</th><th className="px-3 py-2">Update status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -344,26 +347,20 @@ export function SourcesCatalog({ docs, demo, role }: { docs: SourceRow[]; demo: 
                           {r.latest ? <span className={cn(r.status === "AVAILABLE" && !r.rejected ? "font-semibold text-warning" : "text-fg-2")}>{r.latest}</span> : <span className="text-subtle">—</span>}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5 text-xs text-fg-2">{r.published ? formatDate(r.published) : <span className="text-subtle">—</span>}</td>
-                        <td className="px-3 py-2.5 text-xs">
-                          {connectorsOf(d).length ? (
-                            <div className="space-y-0.5">
-                              {connectorsOf(d).slice(0, 1).map((m) => (
-                                <div key={m.id} className="flex items-center gap-1.5 whitespace-nowrap text-fg-2" title={`${m.name} · ${MECHANISM_LABEL[m.mechanism as Mechanism] ?? m.mechanism}`}><Plug className="size-3 text-success" />{m.name}</div>
-                              ))}
-                              {connectorsOf(d).length > 1 && <div className="pl-[18px] text-[11px] text-muted">+ {connectorsOf(d).slice(1).map((m) => (m.mechanism === "HTTP_FINGERPRINT" ? "document watch" : m.name)).join(", ")}</div>}
-                            </div>
-                          ) : <span className="text-subtle">Manual upload</span>}
-                        </td>
                         <td className="px-3 py-2.5">
                           {r.status === "AVAILABLE" ? (
-                            <Tooltip content={r.rejected ? "Update rejected; the current version stays in use" : r.found ? `Version ${r.latest} was found by ${r.found.connector}; it needs to be uploaded before it can be installed` : !o?.released ? `Version ${r.latest} is waiting for an admin to release it` : `Version ${r.latest} is available`}>
+                            <Tooltip content={r.rejected ? "Update rejected; the current version stays in use" : r.found ? `Version ${r.latest} was found by ${r.found.connector}; it is not in the library yet` : !o?.released ? `Version ${r.latest} is waiting for an admin to release it` : `Version ${r.latest} is available`}>
                               <span className={cn("flex flex-col whitespace-nowrap text-xs transition-opacity duration-700", (r.rejected || fade) && "opacity-50")}>
                                 <span className="flex items-center gap-1.5"><Dot tone="warning" />Update available</span>
-                                {!o?.released && !r.rejected && <span className="pl-3 text-[11px] text-muted">{r.found ? "Found by connector · awaiting upload" : "Awaiting admin release"}</span>}
+                                {r.found && !r.rejected && <span className="pl-3 text-[11px] text-muted">Found by connector · not in the library yet</span>}
+                                {o && !r.found && !r.rejected && <span className="pl-3 text-[11px] text-muted">New version in the Source Document Library</span>}
                               </span>
                             </Tooltip>
                           ) : (
-                            <span className="flex items-center gap-1.5 whitespace-nowrap text-xs"><Dot tone="success" />Updated</span>
+                            <span className="flex flex-col whitespace-nowrap text-xs">
+                              <span className="flex items-center gap-1.5"><Dot tone="success" />Updated</span>
+                              {connected(d) && <span className="pl-3 text-[11px] text-muted">Verified from Source</span>}
+                            </span>
                           )}
                         </td>
                       </tr>

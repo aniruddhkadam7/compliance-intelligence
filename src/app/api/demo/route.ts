@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { handle, HttpError, requireSession, requireWriter } from "@/lib/auth/server";
 import { prisma } from "@/lib/db";
-import { applyUpdates, approveControls, DEMO_KEYS, getDemoState, isReleased, rejectUpdates, releaseUpdates, rollback } from "@/lib/demo/state";
+import { applyUpdates, approveControls, DEMO_KEYS, getDemoState, isReleased, reconsiderControls, rejectControls, rejectUpdates, releaseUpdates, rollback } from "@/lib/demo/state";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -13,6 +13,8 @@ const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("update"), keys: z.array(Key).min(1) }),
   z.object({ action: z.literal("reject"), keys: z.array(Key).min(1) }),
   z.object({ action: z.literal("approve"), key: Key, controls: z.array(z.string().min(1).max(60)).min(1).max(500) }),
+  z.object({ action: z.literal("reject-controls"), key: Key, controls: z.array(z.string().min(1).max(60)).min(1).max(500) }),
+  z.object({ action: z.literal("reconsider-controls"), key: Key, controls: z.array(z.string().min(1).max(60)).min(1).max(500) }),
   z.object({ action: z.literal("rollback") }),
   z.object({ action: z.literal("release"), keys: z.array(Key).min(1), released: z.boolean() }),
 ]);
@@ -39,6 +41,9 @@ export const POST = handle(async (req: Request) => {
   if (body.action === "reject") await rejectUpdates(body.keys);
   if (body.action === "approve") {
     try { await approveControls(body.key, body.controls); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : "Approval failed."); }
+  }
+  if (body.action === "reject-controls" || body.action === "reconsider-controls") {
+    try { await (body.action === "reject-controls" ? rejectControls : reconsiderControls)(body.key, body.controls); } catch (e) { throw new HttpError(409, e instanceof Error ? e.message : "Review failed."); }
   }
   if (body.action === "rollback") await rollback(session.sub, session.role);
   else await prisma.auditLog.create({ data: { actor: session.sub, role: session.role, action: `DEMO_${body.action.toUpperCase()}`, entity: "DemoState", details: body } });

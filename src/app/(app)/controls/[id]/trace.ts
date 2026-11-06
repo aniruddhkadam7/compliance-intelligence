@@ -33,8 +33,8 @@ export function buildTrace(c: ControlDetail, expanded: ReadonlySet<string> = new
       const flag = c.versionFlags[fw.id];
       nodes.push({
         id: f, kind: "framework", label: fw.short, href: `/frameworks/${fw.id}`,
-        sublabel: `${n} obligation${n === 1 ? "" : "s"}${flag === "pending" ? " · approval pending" : flag === "updated" ? " · updated" : ""}`,
-        tone: flag === "pending" ? "warning" : flag === "updated" ? "success" : undefined,
+        sublabel: `${n} obligation${n === 1 ? "" : "s"}${flag === "pending" ? " · approval pending" : flag === "rejected" ? " · rejected, kept" : flag === "updated" ? " · updated" : ""}`,
+        tone: flag === "pending" || flag === "rejected" ? "warning" : flag === "updated" ? "success" : undefined,
       });
       edges.push({ from: tp, to: f });
       if (n >= COLLAPSE_AT && !expanded.has(group)) {

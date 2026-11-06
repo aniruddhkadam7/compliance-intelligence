@@ -116,7 +116,7 @@ export function CitationDetailSheet({ citationId, onClose, onOpen }: { citationI
             <SectionTitle>Source traceability</SectionTitle>
             <ol className="space-y-1.5 text-xs">
               <li className="flex items-center gap-2"><BookOpenText className="size-3.5 text-subtle" /><Link href={`/sources/${data.framework.id}`} className="text-accent hover:underline">{data.framework.short}</Link><span className="text-muted">in the Source Index (versions, changes, monitoring)</span></li>
-              <li className="flex items-center gap-2"><Library className="size-3.5 text-subtle" /><Link href={`/frameworks/${data.framework.id}`} className="text-accent hover:underline">Framework Repository entry</Link><span className="text-muted">· Framework ID <Mono className="text-[11px]">{data.framework.sourceId}</Mono></span></li>
+              <li className="flex items-center gap-2"><Library className="size-3.5 text-subtle" /><Link href={`/frameworks/${data.framework.id}`} className="text-accent hover:underline">Source Document Library entry</Link><span className="text-muted">· Framework ID <Mono className="text-[11px]">{data.framework.sourceId}</Mono></span></li>
               <li className="flex items-center gap-2"><ArrowRight className="size-3.5 text-subtle" /><span className="text-muted">Imported from</span><Provenance sheet={data.sourceSheet} row={data.sourceRow} /></li>
               {data.framework.documentUrl && <li className="flex items-center gap-2"><ExternalLink className="size-3.5 text-subtle" /><a href={data.framework.documentUrl} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Original source document</a></li>}
             </ol>

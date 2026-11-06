@@ -20,7 +20,15 @@ export default async function ControlPage({ params }: { params: Promise<{ id: st
         title={<span className="flex items-center gap-2"><span className="font-mono">{c.controlName}</span></span>}
         description={c.title ?? undefined}
       />
-      {c.frameworkUpdates.map((u) => u.state === "pending" ? (
+      {c.frameworkUpdates.map((u) => u.state === "rejected" ? (
+        <div key={u.key} className="mb-4 flex items-start gap-2.5 rounded-md border border-warning/40 bg-warning-soft px-3 py-2.5 text-[13px] text-fg">
+          <BellRing className="mt-0.5 size-4 shrink-0 text-warning" />
+          <div>
+            <span className="font-medium">Newer version: {u.family} {u.previous} → {u.current}.</span> The move to {u.current} was rejected; this control stays on {u.family} {u.previous}.{" "}
+            <Link href={`/change-analytics?update=${u.key}&control=${encodeURIComponent(c.controlName)}`} className="font-medium text-fg underline underline-offset-2">Reconsider in {TERMS.versionImpact}</Link>
+          </div>
+        </div>
+      ) : u.state === "pending" ? (
         <div key={u.key} className="mb-4 flex items-start gap-2.5 rounded-md border border-warning/40 bg-warning-soft px-3 py-2.5 text-[13px] text-fg">
           <BellRing className="mt-0.5 size-4 shrink-0 text-warning" />
           <div>

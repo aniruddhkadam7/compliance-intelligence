@@ -100,7 +100,7 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className={cn("border-b border-border last:border-0 hover:bg-surface-2", c.versionFlags[r.framework.id] === "pending" && "bg-warning-soft", c.versionFlags[r.framework.id] === "updated" && "bg-success-soft")}>
+                <tr key={r.id} className={cn("border-b border-border last:border-0 hover:bg-surface-2", (c.versionFlags[r.framework.id] === "pending" || c.versionFlags[r.framework.id] === "rejected") && "bg-warning-soft", c.versionFlags[r.framework.id] === "updated" && "bg-success-soft")}>
                   <td className="whitespace-nowrap px-4 py-2 text-fg-2">{r.framework.short}</td>
                   <td className="px-3 py-2"><Link href={`/citations?citation=${r.sourceSectionId}`} className="font-mono text-xs text-accent hover:underline">{r.sourceSectionId}</Link></td>
                   <td className="px-3 py-2 text-[13px] text-fg">{r.sectionName}</td>
@@ -119,7 +119,7 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
 
 type FrameworkGroup = ControlDetail["procedureTrace"][number]["frameworks"][number];
 
-function FrameworkBlock({ fw, flag }: { fw: FrameworkGroup; flag?: "pending" | "updated" }) {
+function FrameworkBlock({ fw, flag }: { fw: FrameworkGroup; flag?: "pending" | "updated" | "rejected" }) {
   const list = (
     <ul className="space-y-1">
       {fw.obligations.map((o) => (
@@ -133,11 +133,12 @@ function FrameworkBlock({ fw, flag }: { fw: FrameworkGroup; flag?: "pending" | "
   );
   const n = fw.obligations.length;
   return (
-    <div className={cn("rounded-md border px-3 py-2", flag === "pending" ? "border-warning/60 bg-warning-soft" : flag === "updated" ? "border-success/50 bg-success-soft" : "border-border bg-surface-2")}>
+    <div className={cn("rounded-md border px-3 py-2", (flag === "pending" || flag === "rejected") ? "border-warning/60 bg-warning-soft" : flag === "updated" ? "border-success/50 bg-success-soft" : "border-border bg-surface-2")}>
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <span className="flex items-center gap-2">
           <Link href={`/frameworks/${fw.id}`} className="text-[13px] font-semibold text-fg hover:text-accent">{fw.short}</Link>
           {flag === "pending" && <Badge tone="warning">Approval pending</Badge>}
+          {flag === "rejected" && <Badge tone="warning">Rejected · kept</Badge>}
           {flag === "updated" && <Badge tone="success">Updated</Badge>}
         </span>
         <span className="text-[11px] text-muted">{n} obligation{n === 1 ? "" : "s"}</span>

@@ -1,3 +1,4 @@
+import { TERMS } from "@/lib/terms";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ExternalLink, GitCompareArrows } from "lucide-react";
@@ -90,7 +91,7 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
   return (
     <Page>
       <PageHeader
-        breadcrumbs={[{ label: "Framework Repository", href: "/frameworks" }, { label: fw.short }]}
+        breadcrumbs={[{ label: TERMS.frameworks, href: "/frameworks" }, { label: fw.short }]}
         title={fw.short}
         description={fw.name}
         meta={
