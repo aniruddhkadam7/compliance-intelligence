@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowRight, BellRing, Check, CheckCircle2, ClipboardCheck, FileSpreadsheet, GitCompareArrows, Grid3x3, Link2, ListChecks, Search, ShieldCheck, Upload, X } from "lucide-react";
@@ -125,6 +126,13 @@ export function ChangeAnalytics() {
 /** Approves controls' move to the new version, with the mapping animation. */
 function useApprove(d: Detail) {
   const qc = useQueryClient();
+  const router = useRouter();
+  // A review changes what every page shows for these controls: refetch this page's data and drop the browser's copies
+  // of server-rendered pages (control pages, Sources, the library, the sidebar badge) so they are current everywhere.
+  const refreshEverywhere = async () => {
+    await qc.invalidateQueries();
+    router.refresh();
+  };
   const progress = useProgressSteps();
   const approve = async (names: string[]) => {
     if (!names.length) return;
@@ -132,7 +140,7 @@ function useApprove(d: Detail) {
       await progress.run(`Approving ${names.length === 1 ? names[0] : `${names.length} controls`}`, APPROVE_STEPS(d, names), () => apiSend("/api/demo", { action: "approve", key: d.key, controls: names }),
         names.length > 14 ? [...names.slice(0, 13), `+${names.length - 13} more`] : names);
       toast.success(`${names.length === 1 ? names[0] : `${names.length} controls`} mapped to ${d.family} ${d.current}`);
-      await qc.invalidateQueries();
+      await refreshEverywhere();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Approval failed");
     }
@@ -145,7 +153,7 @@ function useApprove(d: Detail) {
       await apiSend("/api/demo", { action, key: d.key, controls: names });
       if (action === "reject-controls") toast.info(`${who} rejected`, { description: `Stays on ${d.family} ${d.previous}. You can reconsider it at any time.` });
       else toast.info(`${who} back to awaiting approval`);
-      await qc.invalidateQueries();
+      await refreshEverywhere();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Action failed");
     }

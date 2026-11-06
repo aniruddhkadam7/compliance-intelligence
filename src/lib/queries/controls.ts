@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { shortName } from "@/lib/frameworks";
 import { controlsNeedingReview } from "@/lib/updates/impact";
 import { controlVersions, type Highlight } from "@/lib/demo/state";
+import { visibleControlFrameworks } from "./control-links";
 import { ListParams, paging } from "./params";
 
 export const ControlFilters = ListParams.extend({
@@ -33,21 +34,6 @@ const approvingUpdates = (v: Versions) => v.updates.filter((u) => u.status === "
 function updateFlags(v: Versions, controlName: string): ControlUpdateFlag[] {
   return approvingUpdates(v).filter((u) => u.affected.has(controlName))
     .map((u) => ({ key: u.key, family: u.family, previous: u.previous, current: u.current, state: u.approved.has(controlName) ? "updated" : u.rejected.has(controlName) ? "rejected" : "pending" }));
-}
-
-/**
- * Control-to-framework links as the client sees them: each control shows only the framework version it points to
- * (see src/lib/demo/state.ts), so a framework's previous and new version are never both listed.
- */
-async function effectiveLinks(v: Versions) {
-  const rows = await prisma.$queryRaw<{ controlId: string; controlName: string; frameworkId: string; name: string; family: string | null }[]>`
-    SELECT DISTINCT o."controlId", k."controlName", c."frameworkId", f."name", f."family"
-    FROM "ControlObligation" o JOIN "Citation" c ON c.id = o."citationId" JOIN "Framework" f ON f.id = c."frameworkId" JOIN "CcfControl" k ON k.id = o."controlId"`;
-  const hidden = new Map<string, Set<string>>();
-  return rows.filter((r) => {
-    if (!hidden.has(r.controlName)) hidden.set(r.controlName, v.resolve(r.controlName).hidden);
-    return !hidden.get(r.controlName)!.has(r.frameworkId);
-  });
 }
 
 const SORTS = ["controlName", "category", "scope", "title"] as const;
@@ -84,8 +70,15 @@ export async function listControls(f: ControlFilters) {
   };
   const v = await controlVersions();
   if (f.frameworkId || f.family) {
-    const links = await effectiveLinks(v);
-    where.id = { in: [...new Set(links.filter((l) => (f.frameworkId ? l.frameworkId === f.frameworkId : (l.family ?? l.name) === f.family)).map((l) => l.controlId))] };
+    const links = await visibleControlFrameworks(v);
+    const ids = new Set(links.filter((l) => (f.frameworkId ? l.frameworkId === f.frameworkId : (l.family ?? l.name) === f.family)).map((l) => l.controlId));
+    // A framework's controls also include those its applied update affects. Until approved they have no link on the
+    // version they point to, but they are flagged for review and must be found under that framework.
+    if (!f.frameworkId) {
+      const names = approvingUpdates(v).filter((u) => u.family === f.family).flatMap((u) => [...u.affected]);
+      if (names.length) for (const c of await prisma.ccfControl.findMany({ where: { controlName: { in: names } }, select: { id: true } })) ids.add(c.id);
+    }
+    where.id = { in: [...ids] };
   }
   if (f.mapping === "conflict") where.id = { in: await conflictControlIds() };
   if (f.mapping === "review") where.id = { in: [...(await controlsNeedingReview()).keys()] };
@@ -138,8 +131,8 @@ export async function controlFacets() {
     prisma.ccfControl.groupBy({ by: ["category"], _count: { _all: true } }),
     prisma.ccfControl.groupBy({ by: ["scope"], _count: { _all: true } }),
     prisma.ccfControl.groupBy({ by: ["domainPrefix"], _count: { _all: true } }),
-    effectiveLinks(v),
-    prisma.ccfControl.findMany({ select: { controlName: true } }),
+    visibleControlFrameworks(v),
+    prisma.ccfControl.findMany({ select: { id: true, controlName: true } }),
   ]);
   // Per family: distinct controls across the versions they point to, plus each version's own count.
   const fams = new Map<string, { controls: Set<string>; versions: Map<string, { id: string; short: string; controls: Set<string> }> }>();
@@ -153,6 +146,12 @@ export async function controlFacets() {
     fams.set(key, fam);
   }
   const present = new Set(names.map((n) => n.controlName));
+  // Controls affected by an applied update count under that framework, as in the controls filter.
+  const idByName = new Map(names.map((n) => [n.controlName, n.id]));
+  for (const u of approvingUpdates(v)) {
+    const fam = fams.get(u.family);
+    if (fam) for (const n of u.affected) if (idByName.has(n)) fam.controls.add(idByName.get(n)!);
+  }
   return {
     frameworks: [...fams].map(([family, x]) => ({
       family, controls: x.controls.size,

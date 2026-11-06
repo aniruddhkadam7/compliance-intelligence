@@ -12,6 +12,9 @@ import { prisma } from "@/lib/db";
 import { resetData } from "@/lib/ingest/reset";
 import { versionOf } from "@/lib/sources/previous-versions";
 import { affectedControlNames } from "@/lib/updates/reference-impact";
+import { resolveVersions } from "@/lib/demo/versions";
+
+export type { Highlight } from "@/lib/demo/versions";
 
 /**
  * The updates offered. NIST CSF, EU AI Act, ISO/IEC 27001 and ISO/IEC 27002 appear in Sources as "Update available" on
@@ -143,8 +146,6 @@ export async function uninstalledVersions() {
   return fws.filter((u) => statusOf(s, u.key) !== "UPDATED" && u.currentId).map((u) => u.currentId!);
 }
 
-export type Highlight = "pending" | "updated" | "rejected";
-
 /**
  * Which framework version each client control points to. `hidden` holds the documents a control must not show;
  * `highlight` marks the documents of an applied update: "pending" (previous version, approval outstanding) and
@@ -160,18 +161,7 @@ export async function controlVersions() {
     rejected: new Set(s.rejected?.[u.key] ?? []),
     affected: await affectedControlNames(u.key),
   })));
-  const resolve = (controlName: string) => {
-    const hidden = new Set<string>(), highlight = new Map<string, Highlight>();
-    for (const u of updates) {
-      // Updates without test-procedure impact data (e.g. EU AI Act) leave each control on the version it is mapped to.
-      if (!u.previousId || !u.currentId || !u.affected.size) continue;
-      const onNew = u.status === "UPDATED" && (u.uploadedAfter || !u.affected.has(controlName) || u.approved.has(controlName));
-      hidden.add(onNew ? u.previousId : u.currentId);
-      if (u.status === "UPDATED" && !u.uploadedAfter && u.affected.has(controlName))
-        highlight.set(onNew ? u.currentId : u.previousId, onNew ? "updated" : u.rejected.has(controlName) ? "rejected" : "pending");
-    }
-    return { hidden, highlight };
-  };
+  const resolve = (controlName: string) => resolveVersions(updates, controlName);
   /** Documents no control can point to: the new version of an update not yet applied. */
   const hiddenEverywhere = new Set(updates.filter((u) => u.status !== "UPDATED" && u.currentId).map((u) => u.currentId!));
   return { updates, resolve, hiddenEverywhere };

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { shortName } from "@/lib/frameworks";
 import { previousVersionOf, versionOf } from "@/lib/sources/previous-versions";
 import { uninstalledVersions } from "@/lib/demo/state";
+import { visibleLinks } from "./control-links";
 
 export const FrameworkFilters = z.object({
   q: z.string().trim().max(200).optional().default(""),
@@ -142,38 +143,34 @@ export async function getFramework(id: string) {
     FROM "Citation" c WHERE c."frameworkId" = ${fw.id}
     GROUP BY 1 ORDER BY 2 DESC LIMIT 40`;
 
-  const totals = await prisma.$queryRaw<{ mapped: bigint; controls: bigint }[]>`
-    SELECT COUNT(DISTINCT c.id) FILTER (WHERE m.id IS NOT NULL) AS mapped,
-      COUNT(DISTINCT m."controlId") AS controls
-    FROM "Citation" c
-    LEFT JOIN "ControlObligation" m ON m."citationId" = c.id
-    WHERE c."frameworkId" = ${fw.id}`;
+  // Sections and controls linked to this document, for the version each control points to (not the raw workbook links).
+  const links = (await visibleLinks()).filter((l) => l.frameworkId === fw.id);
 
   return {
     ...fw,
     short: shortName(fw.name),
     versions: versions.map((v) => ({ ...v, short: shortName(v.name), citations: v._count.citations })),
     sections: sections.map((s) => ({ section: s.section || "(source root)", citations: Number(s.citations) })),
-    totals: { mapped: Number(totals[0]?.mapped ?? 0), controls: Number(totals[0]?.controls ?? 0) },
+    totals: { mapped: new Set(links.map((l) => l.citationId)).size, controls: new Set(links.map((l) => l.controlId)).size },
   };
 }
 
-/** CCF controls linked (authoritatively) through any citation of the framework. */
+/** Client controls linked through any section of the framework, for the version each control points to. */
 export async function frameworkControls(frameworkId: string, p: { page: number; pageSize: number; q: string }) {
-  const q = `%${p.q}%`;
-  const rows = await prisma.$queryRaw<{ id: string; controlName: string; title: string | null; category: string | null; requirements: bigint; citations: bigint; total: bigint }[]>`
-    SELECT k.id, k."controlName", k.title, k.category,
-      0::bigint AS requirements, COUNT(DISTINCT c.id) AS citations, COUNT(*) OVER() AS total
-    FROM "Citation" c
-    JOIN "ControlObligation" m ON m."citationId" = c.id
-    JOIN "CcfControl" k ON k.id = m."controlId"
-    WHERE c."frameworkId" = ${frameworkId}
-      AND (${p.q} = '' OR k."controlName" ILIKE ${q} OR k.title ILIKE ${q} OR k.category ILIKE ${q})
-    GROUP BY k.id ORDER BY k."controlName"
-    LIMIT ${p.pageSize} OFFSET ${(p.page - 1) * p.pageSize}`;
+  const [links, controls] = await Promise.all([
+    visibleLinks().then((all) => all.filter((l) => l.frameworkId === frameworkId)),
+    prisma.ccfControl.findMany({ select: { id: true, controlName: true, title: true, category: true } }),
+  ]);
+  const sections = new Map<string, Set<string>>();
+  for (const l of links) sections.set(l.controlId, (sections.get(l.controlId) ?? new Set()).add(l.citationId));
+  const q = p.q.trim().toLowerCase();
+  const matching = controls
+    .filter((c) => sections.has(c.id) && (!q || [c.controlName, c.title, c.category].some((x) => x?.toLowerCase().includes(q))))
+    .sort((a, b) => a.controlName.localeCompare(b.controlName, undefined, { numeric: true }));
   return {
-    items: rows.map((r) => ({ id: r.id, controlName: r.controlName, title: r.title, category: r.category, requirements: Number(r.requirements), citations: Number(r.citations) })),
-    total: Number(rows[0]?.total ?? 0),
+    items: matching.slice((p.page - 1) * p.pageSize, p.page * p.pageSize)
+      .map((c) => ({ id: c.id, controlName: c.controlName, title: c.title, category: c.category, requirements: 0, citations: sections.get(c.id)!.size })),
+    total: matching.length,
     page: p.page,
     pageSize: p.pageSize,
   };

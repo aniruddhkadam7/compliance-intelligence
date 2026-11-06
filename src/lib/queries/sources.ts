@@ -147,17 +147,12 @@ export async function listSources() {
   const shaped = docs.map((f) => shape(f, docs));
   const cmp = await comparisons(shaped.filter((d) => d.previousVersion).map((d) => ({ id: d.id, previousId: d.previousVersion!.id })));
   const checks = await latestChecks(shaped.map((d) => d.id));
-  // Client controls mapped to each document (client layer, if uploaded); explains why an earlier version is kept.
-  const mapped = await prisma.$queryRaw<{ frameworkId: string; n: bigint }[]>`
-    SELECT c."frameworkId", COUNT(DISTINCT o."controlId") AS n FROM "ControlObligation" o
-    JOIN "Citation" c ON c.id = o."citationId" GROUP BY c."frameworkId"`;
-  const controls = new Map(mapped.map((m) => [m.frameworkId, Number(m.n)]));
   const pending = await pendingImports();
   // Version update that installed each document (its comparison with the version it replaced), newest first.
   const installs = await prisma.aiIngestion.findMany({ where: { status: "PUBLISHED", publishedFrameworkId: { in: shaped.map((d) => d.id) } }, orderBy: { updatedAt: "desc" }, select: { id: true, publishedFrameworkId: true } });
   const installed = new Map<string, string>();
   for (const x of installs) if (!installed.has(x.publishedFrameworkId!)) installed.set(x.publishedFrameworkId!, x.id);
-  return shaped.map((d) => ({ ...d, clientControls: controls.get(d.id) ?? 0, pendingImport: pending.get(d.id) ?? null, installedUpdate: installed.get(d.id) ?? null, latestCheck: checks.get(d.id) ?? null, comparison: cmp.has(d.id) ? comparisonSummary(cmp.get(d.id)!) : null }));
+  return shaped.map((d) => ({ ...d, pendingImport: pending.get(d.id) ?? null, installedUpdate: installed.get(d.id) ?? null, latestCheck: checks.get(d.id) ?? null, comparison: cmp.has(d.id) ? comparisonSummary(cmp.get(d.id)!) : null }));
 }
 
 const CHECK_SELECT = { id: true, frameworkId: true, method: true, sourceUrl: true, status: true, approvedVersion: true, latestVersion: true, publicationDate: true, latestDocumentUrl: true, evidence: true, message: true, checkedBy: true, checkedAt: true } as const;
@@ -184,8 +179,6 @@ export async function getSource(id: string) {
     WHERE r.kind = 'VERSION_TRANSITION' AND (t."frameworkId" = ${id} OR (r."toCitationId" IS NULL AND f."frameworkId" IN (
       SELECT x.id FROM "Framework" x WHERE x.family = ${docs[0].family ?? ""} AND x.id <> ${id})))
     GROUP BY r.status`;
-  // Client controls mapped to this document (client layer, if uploaded).
-  const clientControls = await prisma.ccfControl.count({ where: { obligations: { some: { citation: { frameworkId: id } } } } });
   // Latest reviewed AI import that produced or updated this document (summary is AI output, reviewed before publishing).
   const aiImport = await prisma.aiIngestion.findFirst({
     where: { publishedFrameworkId: id, status: "PUBLISHED" }, orderBy: { updatedAt: "desc" },
@@ -196,7 +189,6 @@ export async function getSource(id: string) {
     aiImport: aiImport ? { ...aiImport, updatedAt: aiImport.updatedAt.toISOString() } : null,
     installedUpdate: aiImport?.id ?? null,
     transitions: Object.fromEntries(transitions.map((t) => [t.status, Number(t.n)])),
-    clientControls,
     pendingImport: (await pendingImports(id)).get(id) ?? null,
     comparison,
     latestCheck: (await latestChecks([id])).get(id) ?? null,
