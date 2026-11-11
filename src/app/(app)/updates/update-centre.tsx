@@ -90,14 +90,6 @@ export function UpdateCentre() {
     }
   }
 
-  // "N to review" on a connector: show its open findings in the Update centre below.
-  function reviewFindings(id: string) {
-    // A grouped entry also carries its document watch's findings; filter to the one connector that has them, or show all.
-    const withOpen = [id, ...(also[id] ?? []).map((c) => c.id)].filter((x) => (items.find((c) => c.id === x)?.openUpdates ?? 0) > 0);
-    set({ connector: withOpen.length === 1 ? withOpen[0] : "", status: "NEW", update: "" });
-    setTimeout(() => document.getElementById("update-centre")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-  }
-
   const lastSuccess = items.map((c) => c.lastSuccessAt).filter(Boolean).sort().pop();
   const errors = items.filter((c) => c.lastStatus === "ERROR").length;
   const overdue = items.filter((c) => c.enabled && isOverdue(c.lastCheckedAt, c.pollingMinutes)).length;
@@ -119,15 +111,14 @@ export function UpdateCentre() {
         </div>
       )}
       <StatStrip
-        className="mb-4 xl:grid-cols-4"
+        className="mb-4 xl:grid-cols-3"
         items={[
           { label: "Connectors", value: main.length, sub: `${main.filter((c) => c.enabled).length} enabled` },
-          { label: "Updates to review", value: items.reduce((n, c) => n + c.openUpdates, 0), tone: "warning" },
           { label: "Connector errors", value: errors, tone: errors ? "warning" : "success", sub: errors ? "See status column" : "All healthy" },
           { label: "Last successful check", value: <span className="text-[15px]">{formatRelative(lastSuccess)}</span>, sub: overdue ? `${overdue} of ${items.length} overdue for their scheduled check` : "All checked on schedule" },
         ]}
       />
-      <ConnectorTable items={main} also={also} loading={connectors.isLoading} error={connectors.error} running={running} canWrite={canWrite} onCheck={(id) => check([id, ...(also[id] ?? []).map((c) => c.id)])} onSync={(id) => Promise.all([id, ...(also[id] ?? []).map((c) => c.id)].map(sync)).then(() => undefined)} onHistory={(id) => set({ history: id })} onReview={reviewFindings} onGetVersion={getNewVersion} />
+      <ConnectorTable items={main} also={also} loading={connectors.isLoading} error={connectors.error} running={running} canWrite={canWrite} onCheck={(id) => check([id, ...(also[id] ?? []).map((c) => c.id)])} onSync={(id) => Promise.all([id, ...(also[id] ?? []).map((c) => c.id)].map(sync)).then(() => undefined)} onHistory={(id) => set({ history: id })} onGetVersion={getNewVersion} />
       <div className="my-3 flex items-start gap-2 text-[11px] text-muted">
         <Info className="mt-px size-3 shrink-0" />
         <span>

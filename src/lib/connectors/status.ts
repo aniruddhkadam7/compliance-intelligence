@@ -71,16 +71,15 @@ export function isOverdue(lastCheckedAt: string | Date | null | undefined, polli
   return now - new Date(lastCheckedAt).getTime() > 2 * pollingMinutes * 60_000;
 }
 
-export type ConnectorStatusKind = "NOT_CHECKED" | "ERROR" | "UPDATE_AVAILABLE" | "REVIEW" | "UP_TO_DATE";
+export type ConnectorStatusKind = "NOT_CHECKED" | "ERROR" | "UPDATE_AVAILABLE" | "UP_TO_DATE";
 
 /**
  * One status per connector, in order of precedence: a failed last check, a newer version at the publisher than the one
- * in use, open findings, otherwise up to date.
+ * in use, otherwise up to date. Findings from checks are listed below the table, not counted as a status.
  */
-export function connectorStatus(c: { lastCheckedAt: string | Date | null; lastStatus: string | null; publisherNewer: boolean; openUpdates: number }): ConnectorStatusKind {
+export function connectorStatus(c: { lastCheckedAt: string | Date | null; lastStatus: string | null; publisherNewer: boolean }): ConnectorStatusKind {
   if (!c.lastCheckedAt) return "NOT_CHECKED";
   if (c.lastStatus === "ERROR") return "ERROR";
   if (c.publisherNewer) return "UPDATE_AVAILABLE";
-  if (c.openUpdates > 0) return "REVIEW";
   return "UP_TO_DATE";
 }

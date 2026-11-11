@@ -24,11 +24,10 @@ test("publisher version is compared with the version in use", () => {
 });
 
 test("one status per connector, never contradictory", () => {
-  const base = { lastCheckedAt: "2026-11-10T00:00:00Z", lastStatus: "OK", publisherNewer: false, openUpdates: 0 };
+  const base = { lastCheckedAt: "2026-11-10T00:00:00Z", lastStatus: "OK", publisherNewer: false };
   assert.equal(connectorStatus({ ...base, lastCheckedAt: null }), "NOT_CHECKED");
   assert.equal(connectorStatus({ ...base, lastStatus: "ERROR", publisherNewer: true }), "ERROR");
-  assert.equal(connectorStatus({ ...base, publisherNewer: true, openUpdates: 1 }), "UPDATE_AVAILABLE");
-  assert.equal(connectorStatus({ ...base, openUpdates: 2 }), "REVIEW");
+  assert.equal(connectorStatus({ ...base, publisherNewer: true }), "UPDATE_AVAILABLE");
   assert.equal(connectorStatus(base), "UP_TO_DATE");
 });
 

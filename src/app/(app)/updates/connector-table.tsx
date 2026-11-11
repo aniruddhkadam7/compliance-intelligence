@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { ArrowUpCircle, CheckCircle2, CircleDashed, Download, ExternalLink, History, Loader2, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
+import { ArrowUpCircle, CheckCircle2, CircleDashed, Download, ExternalLink, History, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,16 +29,10 @@ export interface ConnectorRow {
 }
 
 const pill = "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors hover:brightness-95";
-const plural = (n: number, s: string) => `${n} ${s}${n === 1 ? "" : "s"}`;
 
 /** The connector's single status, with one line that explains it. */
-function Status({ c, onReview }: { c: ConnectorRow; onReview: (id: string) => void }) {
-  const kind = connectorStatus({ lastCheckedAt: c.lastCheckedAt, lastStatus: c.lastStatus, publisherNewer: c.latest.newer, openUpdates: c.openUpdates });
-  const review = c.openUpdates > 0 && (
-    <button onClick={() => onReview(c.id)} title="Show these findings below" className="text-[11px] font-medium text-warning hover:underline">
-      {plural(c.openUpdates, "finding")} to review
-    </button>
-  );
+function Status({ c }: { c: ConnectorRow }) {
+  const kind = connectorStatus({ lastCheckedAt: c.lastCheckedAt, lastStatus: c.lastStatus, publisherNewer: c.latest.newer });
 
   if (kind === "NOT_CHECKED") return <span className="flex items-center gap-1.5 text-xs text-muted"><CircleDashed className="size-3.5" /> Not checked yet</span>;
   if (kind === "ERROR")
@@ -61,19 +55,9 @@ function Status({ c, onReview }: { c: ConnectorRow; onReview: (id: string) => vo
           {c.publisher} publishes <span className="text-fg-2">{c.latest.label}</span>; the platform uses <span className="text-fg-2">{c.library.label}</span>.
           {" "}{inSources ? "Install it in Sources." : c.fetchesContent ? "Use Get new version to prepare it." : "Upload it in the Admin Console."}
         </div>
-        {review}
       </div>
     );
   }
-  if (kind === "REVIEW")
-    return (
-      <div className="space-y-1">
-        <button onClick={() => onReview(c.id)} title="Show these findings below" className={`${pill} bg-warning-soft text-warning`}>
-          <TriangleAlert className="size-3.5" /> {c.openUpdates} to review
-        </button>
-        <div className="text-[11px] text-muted">Findings from earlier checks are awaiting a decision.</div>
-      </div>
-    );
   return (
     <div className="space-y-1">
       <span className="flex items-center gap-1.5 text-xs text-success"><CheckCircle2 className="size-3.5" /> Up to date</span>
@@ -101,10 +85,10 @@ function LastChecked({ c }: { c: ConnectorRow }) {
 }
 
 export function ConnectorTable({
-  items, also = {}, loading, error, running, canWrite, onCheck, onSync, onHistory, onReview, onGetVersion,
+  items, also = {}, loading, error, running, canWrite, onCheck, onSync, onHistory, onGetVersion,
 }: {
   items: ConnectorRow[]; also?: Record<string, ConnectorRow[]>; loading: boolean; error: unknown; running: string[]; canWrite: boolean;
-  onCheck: (id: string) => void; onSync: (id: string) => void; onHistory: (id: string) => void; onReview: (id: string) => void; onGetVersion: (id: string) => void;
+  onCheck: (id: string) => void; onSync: (id: string) => void; onHistory: (id: string) => void; onGetVersion: (id: string) => void;
 }) {
   return (
     <Card>
@@ -141,7 +125,7 @@ export function ConnectorTable({
                     </div>
                   ))}
                 </td>
-                <td className="px-3 py-3"><Status c={c} onReview={onReview} /></td>
+                <td className="px-3 py-3"><Status c={c} /></td>
                 <td className="px-3 py-3 text-xs">
                   <div className="text-[11px] text-muted">In use</div>
                   <div className="text-fg">{c.library.label ?? "—"}</div>
