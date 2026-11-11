@@ -8,6 +8,7 @@ import { REFERENCE_SHEET } from "@/lib/reference/mappings";
 import type { NormalisedDataset } from "./ccf-workbook";
 import { isClientTemplate, normaliseClientTemplate } from "./client-template";
 import { normaliseRelationships, type RelationshipRow } from "./relationships-workbook";
+import { buildImportReport, type ImportReport } from "./report";
 
 /**
  * Three independent import paths:
@@ -183,24 +184,71 @@ export async function analyse(db: PrismaClient, kind: ImportKind, buffer: Buffer
   };
 }
 
-/** Analyse a workbook without writing data. Records a PREVIEWED job. */
+/**
+ * The import of this exact file (same content hash and kind) whose data is still in the platform, if any. A rollback or
+ * reset removes the data, so the same file then counts as not imported and can be imported again.
+ */
+export async function liveImportOf(db: PrismaClient, kind: string, fileHash: string) {
+  const done = await db.importJob.findFirst({ where: { kind, fileHash, status: "COMPLETED" }, orderBy: { completedAt: "desc" }, omit: { sheets: true } });
+  if (!done) return null;
+  const latest = await db.importJob.findFirst({ where: { kind, status: "COMPLETED" }, orderBy: { completedAt: "desc" }, select: { id: true } });
+  const controls = await db.ccfControl.count({ where: { importJobId: done.id } });
+  if (latest?.id !== done.id || (kind === "CLIENT_CONTROLS" && !controls)) return null;
+  return { jobId: done.id, completedAt: done.completedAt!.toISOString(), actor: done.actor, counts: (done.counts ?? {}) as Record<string, number> };
+}
+
+/**
+ * Upload + Validate: parses and validates a workbook without touching live data. Only an import record in status
+ * PREVIEWED is written, with its findings, so the attempt shows in the import history.
+ */
 export async function previewImport(db: PrismaClient, kind: ImportKind, file: { name: string; buffer: Buffer }, actor: string) {
   const a = await analyse(db, kind, file.buffer);
+  const { report, issues } = buildImportReport(a.sheets, a.issues);
+  const fileHash = sha256(file.buffer);
   const job = await db.importJob.create({
     data: {
-      kind, fileName: file.name, fileSize: file.buffer.length, fileHash: sha256(file.buffer),
-      status: "PREVIEWED", sheets: json(a.sheets), counts: json(a.counts), actor,
-      issues: { createMany: { data: a.issues.map((i) => ({ ...i })) } },
+      kind, fileName: file.name, fileSize: file.buffer.length, fileHash,
+      status: "PREVIEWED", sheets: json(report.sheets), counts: json(a.counts), actor,
+      issues: { createMany: { data: issues.map((i) => ({ ...i })) } },
     },
   });
-  return { jobId: job.id, kind, sheets: a.sheets, counts: a.counts, issues: a.issues };
+  return {
+    jobId: job.id, kind, fileName: file.name, fileSize: file.buffer.length, uploadedAt: job.createdAt.toISOString(),
+    sheets: a.sheets, counts: a.counts, issues, report, alreadyImported: await liveImportOf(db, kind, fileHash),
+  };
+}
+
+/** Records written by an import, counted back from the database after the write (not the parser's estimate). */
+async function writtenCounts(tx: Prisma.TransactionClient, jobId: string) {
+  const control = { importJobId: jobId };
+  const [controls, testProcedures, procedureStatements, procedureLinks, controlObligations, evidence, relationships, frameworks, sections] = await Promise.all([
+    tx.ccfControl.count({ where: control }),
+    // Same split as validation: mapped test procedures, and procedure statements from the control register's columns.
+    tx.testProcedure.count({ where: { control, kind: "PROCEDURE" } }),
+    tx.testProcedure.count({ where: { control, kind: { not: "PROCEDURE" } } }),
+    tx.testProcedureObligation.count({ where: { testProcedure: { control } } }),
+    tx.controlObligation.count({ where: { control } }),
+    tx.evidenceRequirement.count({ where: { control } }),
+    tx.sourceRelationship.groupBy({ by: ["kind"], where: { importJobId: jobId }, _count: { _all: true } }),
+    tx.framework.count({ where: { importJobId: jobId } }),
+    tx.citation.count({ where: { importJobId: jobId } }),
+  ]);
+  const rel = (k: string) => relationships.find((r) => r.kind === k)?._count._all ?? 0;
+  const out: Record<string, number> = {
+    controls, testProcedures, procedureStatements, procedureLinks, controlObligations, evidence,
+    crossFramework: rel("CROSS_FRAMEWORK"), versionTransitions: rel("VERSION_TRANSITION"), frameworks, sectionsWritten: sections,
+  };
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v > 0));
 }
 
 export interface ImportOutcome {
   jobId: string;
   status: "COMPLETED" | "FAILED";
+  /** COMPLETED: records written, counted back from the database. FAILED: the parser's counts; nothing was written. */
   counts: Record<string, number>;
   issues: Issue[];
+  report: ImportReport;
+  completedAt: string;
 }
 
 /** Write a previewed (or, from the CLI, a fresh) import in one transaction. */
@@ -212,31 +260,36 @@ export async function confirmImport(
   opts: { previewJobId?: string } = {},
 ): Promise<ImportOutcome> {
   const fileHash = sha256(file.buffer);
+  // Validated again against the library as it is now: it may have changed since the preview.
   const a = await analyse(db, kind, file.buffer);
+  const { report, issues } = buildImportReport(a.sheets, a.issues);
   const job = opts.previewJobId
-    ? await db.importJob.update({ where: { id: opts.previewJobId }, data: { sheets: json(a.sheets), counts: json(a.counts) } })
+    ? await db.importJob.update({ where: { id: opts.previewJobId }, data: { sheets: json(report.sheets), counts: json(a.counts) } })
     : await db.importJob.create({
         data: {
           kind, fileName: file.name, fileSize: file.buffer.length, fileHash, status: "PREVIEWED",
-          sheets: json(a.sheets), counts: json(a.counts), actor, issues: { createMany: { data: a.issues.map((i) => ({ ...i })) } },
+          sheets: json(report.sheets), counts: json(a.counts), actor, issues: { createMany: { data: issues.map((i) => ({ ...i })) } },
         },
       });
 
-  const blocking = a.issues.filter((i) => i.severity === "ERROR");
+  const blocking = issues.filter((i) => i.severity === "ERROR");
   if (blocking.length) {
-    await db.importJob.update({ where: { id: job.id }, data: { status: "FAILED", completedAt: new Date() } });
+    const failed = await db.importJob.update({ where: { id: job.id }, data: { status: "FAILED", completedAt: new Date() } });
     await db.auditLog.create({ data: { actor, action: "IMPORT_REJECTED", entity: "ImportJob", entityId: job.id, details: json({ kind, errors: blocking.length }) } });
-    return { jobId: job.id, status: "FAILED", counts: a.counts, issues: a.issues };
+    return { jobId: job.id, status: "FAILED", counts: a.counts, issues, report, completedAt: failed.completedAt!.toISOString() };
   }
 
-  await db.$transaction(
+  const done = await db.$transaction(
     async (tx) => {
       const extra = (await a.write(tx, { jobId: job.id, actor })) ?? {};
-      const counts = { ...a.counts, ...extra };
-      await tx.importJob.update({ where: { id: job.id }, data: { status: "COMPLETED", completedAt: new Date(), counts: json(counts) } });
+      // What is now in the database for this import, plus what the write reports (library sections added/updated).
+      const numeric = Object.fromEntries(Object.entries(extra).filter(([, v]) => typeof v === "number")) as Record<string, number>;
+      const counts = { ...(await writtenCounts(tx, job.id)), ...numeric };
+      const completed = await tx.importJob.update({ where: { id: job.id }, data: { status: "COMPLETED", completedAt: new Date(), counts: json(counts) } });
       await tx.auditLog.create({ data: { actor, action: "IMPORT_COMPLETED", entity: "ImportJob", entityId: job.id, details: json({ kind, fileName: file.name, fileHash, counts }) } });
+      return { counts, completedAt: completed.completedAt!.toISOString() };
     },
     { timeout: 300_000, maxWait: 20_000 },
   );
-  return { jobId: job.id, status: "COMPLETED", counts: a.counts, issues: a.issues };
+  return { jobId: job.id, status: "COMPLETED", counts: done.counts, issues, report, completedAt: done.completedAt };
 }

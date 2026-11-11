@@ -4,12 +4,15 @@ import { shortName } from "@/lib/frameworks";
 import { previousVersionOf, versionOf } from "@/lib/sources/previous-versions";
 import { uninstalledVersions } from "@/lib/demo/state";
 import { visibleLinks } from "./control-links";
+import { publisherOf } from "./sources";
 
 export const FrameworkFilters = z.object({
   q: z.string().trim().max(200).optional().default(""),
   type: z.string().max(80).optional().default(""),
   jurisdiction: z.string().max(80).optional().default(""),
   group: z.string().max(80).optional().default(""),
+  /** Publisher as the Overview groups it ("NIST", "ISO / ISO-IEC", "European Union"...). */
+  publisher: z.string().max(80).optional().default(""),
 });
 
 /**
@@ -27,7 +30,7 @@ function sourceDate(details: unknown): Date | null {
 export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
   // Framework versions whose update has not been applied in Sources are not in the repository yet.
   const notInstalled = await uninstalledVersions();
-  const rows = await prisma.framework.findMany({
+  const rows = (await prisma.framework.findMany({
     where: {
       id: { notIn: notInstalled },
       ...(f.type && { type: f.type }),
@@ -47,7 +50,7 @@ export async function listFrameworks(f: z.infer<typeof FrameworkFilters>) {
       connectors: { select: { name: true, checks: { where: { status: { not: "ERROR" } }, orderBy: { checkedAt: "desc" }, take: 10, select: { details: true } } } },
     },
     orderBy: { name: "asc" },
-  });
+  })).filter((r) => !f.publisher || publisherOf(r.name) === f.publisher);
 
   // Version lifecycle across the whole library (not only the filtered rows): newest version of a family is current.
   const all = await prisma.framework.findMany({ where: { id: { notIn: notInstalled } }, select: { id: true, family: true, versionLabel: true } });

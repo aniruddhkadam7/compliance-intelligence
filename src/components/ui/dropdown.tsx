@@ -1,6 +1,7 @@
 "use client";
 import * as React from "react";
 import * as M from "@radix-ui/react-dropdown-menu";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const Dropdown = M.Root;
@@ -28,3 +29,17 @@ export function DropdownLabel({ className, ...props }: M.DropdownMenuLabelProps)
 }
 
 export const DropdownSeparator = () => <M.Separator className="my-1 h-px bg-border" />;
+
+/** A menu item with a check mark that stays open when toggled, for choosing several options. */
+export function DropdownCheckboxItem({ className, children, onSelect, ...props }: M.DropdownMenuCheckboxItemProps) {
+  return (
+    <M.CheckboxItem
+      onSelect={(e) => { e.preventDefault(); onSelect?.(e); }}
+      className={cn("relative flex cursor-default select-none items-center gap-2 rounded-[4px] py-1.5 pl-7 pr-2 text-[13px] text-fg outline-none data-[highlighted]:bg-surface-3", className)}
+      {...props}
+    >
+      <M.ItemIndicator className="absolute left-2"><Check className="size-3.5 text-accent" /></M.ItemIndicator>
+      {children}
+    </M.CheckboxItem>
+  );
+}

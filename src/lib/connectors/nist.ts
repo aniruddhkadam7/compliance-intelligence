@@ -77,7 +77,7 @@ async function checkCprtCsf(ctx: CheckContext): Promise<CheckResult> {
     contentHash,
     state: { version: detectedVersion, elements, successors, counts, workbookCompared: ctx.workbookVersion ?? workbookCompared },
     changes,
-    message: prev ? (changes.length ? `${changes.length} change(s) detected` : `No change. CSF ${detectedVersion}: ${counts.subcategories} subcategories`) : `Baseline recorded: CSF ${detectedVersion}, ${counts.functions} functions / ${counts.categories} categories / ${counts.subcategories} subcategories`,
+    message: prev ? (changes.length ? `${changes.length} new finding${changes.length === 1 ? "" : "s"} recorded` : `Same data as the previous check: CSF ${detectedVersion}, ${counts.subcategories} subcategories`) : `Baseline recorded: CSF ${detectedVersion}, ${counts.functions} functions / ${counts.categories} categories / ${counts.subcategories} subcategories`,
     details: { counts, document: doc, successorsChecked: CSF_SUCCESSORS },
   };
 }
@@ -110,7 +110,7 @@ async function checkOscal80053(ctx: CheckContext): Promise<CheckResult> {
     const wc = prev.version ? workbookChange(prev.version, `SP 800-53 ${prev.version}`) : null;
     return {
       httpStatus: 304, detectedVersion: prev.version ?? null, contentHash: ctx.currentHash, state: { ...prev, workbookCompared },
-      changes: wc ? [wc] : [], message: wc ? "1 change(s) detected (catalog not modified)" : "No change (HTTP 304 Not Modified)",
+      changes: wc ? [wc] : [], message: `Catalog file not modified since the previous check (HTTP 304): release ${prev.version ?? "unknown"}${wc ? "; 1 new finding recorded" : ""}`,
     };
   }
   if (!data) throw new ConnectorError("Empty OSCAL response", res.status);
@@ -143,7 +143,7 @@ async function checkOscal80053(ctx: CheckContext): Promise<CheckResult> {
     contentHash: stableHash({ controls, withdrawn, lastModified: m["last-modified"] }),
     state: { version: m.version, etag: res.headers.get("etag"), controls, withdrawn, lastModified: m["last-modified"], workbookCompared },
     changes,
-    message: prev ? (changes.length ? `${changes.length} change(s) detected` : `No change. ${m.version}`) : `Baseline recorded: ${m.version}, ${controls.length} active controls/enhancements, ${withdrawn.length} withdrawn`,
+    message: prev ? (changes.length ? `${changes.length} new finding${changes.length === 1 ? "" : "s"} recorded` : `Same catalog as the previous check: release ${m.version}`) : `Baseline recorded: ${m.version}, ${controls.length} active controls/enhancements, ${withdrawn.length} withdrawn`,
     details: { title: m.title, lastModified: m["last-modified"], oscalVersion: m["oscal-version"], activeControls: controls.length, withdrawn: withdrawn.length },
   };
 }
@@ -170,13 +170,13 @@ async function checkCsfPdf(ctx: CheckContext): Promise<CheckResult> {
   if (prev && ctx.currentHash && ctx.currentHash !== contentHash)
     changes.push({
       changeType: "CONTENT_CHANGE",
-      title: "NIST CSWP 29 (CSF 2.0) document file changed",
+      title: "NIST CSF publication (CSWP 29) file changed",
       summary: `HTTP fingerprint differs (Last-Modified ${prev.lastModified ?? "?"} → ${fp.lastModified ?? "?"}). Content may have been revised; check for an erratum or new release.`,
       previousValue: prev.lastModified, newValue: fp.lastModified, details: { previous: prev, current: fp },
     });
   return {
     httpStatus: res.status, detectedVersion: null, contentHash, state: fp, changes,
-    message: prev ? (changes.length ? "Document fingerprint changed" : `No change. Last-Modified ${fp.lastModified}`) : `Baseline fingerprint recorded (Last-Modified ${fp.lastModified})`,
+    message: prev ? (changes.length ? `File changed since the previous check (Last-Modified ${fp.lastModified})` : `File unchanged since the previous check (Last-Modified ${fp.lastModified})`) : `Baseline fingerprint recorded (Last-Modified ${fp.lastModified})`,
     details: fp,
   };
 }
@@ -298,15 +298,15 @@ async function fetchCprtCsfContent(ctx: { state: Record<string, unknown> | null 
 export const nistConnectors: ConnectorDefinition[] = [
   {
     id: "nist-csf2-cprt",
-    name: "NIST CSF 2.0 · CPRT",
-    sourceName: "NIST Cybersecurity Framework 2.0",
+    name: "NIST CSF · CPRT",
+    sourceName: "NIST Cybersecurity Framework (CPRT)",
     publisher: "NIST",
     mechanism: "JSON_EXPORT",
     officialUrl: "https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/CSF_2_0_0/home",
     endpointUrl: `${CPRT}/${CSF_DOC}/export/json?element=all`,
     pollingMinutes: 1440,
-    framework: { family: "NIST CSF", version: "2.0" },
-    description: "Downloads the CSF 2.0 reference data from the NIST Cybersecurity and Privacy Reference Tool. Detects version changes, element-level content changes (functions, categories, subcategories) and successor CSF releases, and downloads a new release in full.",
+    framework: { family: "NIST CSF" },
+    description: "Downloads the current CSF reference data from the NIST Cybersecurity and Privacy Reference Tool. Detects version changes, element-level content changes (functions, categories, subcategories) and successor CSF releases, and downloads a new release in full.",
     check: checkCprtCsf,
     fetchContent: fetchCprtCsfContent,
   },
@@ -327,13 +327,13 @@ export const nistConnectors: ConnectorDefinition[] = [
   {
     id: "nist-csf2-document",
     name: "NIST CSWP 29 · document watch",
-    sourceName: "NIST CSF 2.0 publication (PDF)",
+    sourceName: "NIST CSF publication (PDF)",
     publisher: "NIST",
     mechanism: "HTTP_FINGERPRINT",
     officialUrl: "https://www.nist.gov/cyberframework",
     endpointUrl: CSF_PDF,
     pollingMinutes: 1440,
-    framework: { family: "NIST CSF", version: "2.0" },
+    framework: { family: "NIST CSF" },
     description: "No API exists for the publication itself. This watch compares the official PDF's ETag, Last-Modified and size. A change signals a revised file, not a specific content change.",
     check: checkCsfPdf,
   },

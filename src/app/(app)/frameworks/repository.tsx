@@ -46,7 +46,7 @@ export const typeTone = (t: string | null) => (t === "Law or Regulation" ? "warn
 
 export function FrameworkRepository() {
   const navigate = useNavigate();
-  const [s, set] = useUrlState({ q: "", type: "", jurisdiction: "", group: "", versions: "", sort: "framework", dir: "asc" });
+  const [s, set] = useUrlState({ q: "", type: "", jurisdiction: "", group: "", publisher: "", versions: "", sort: "framework", dir: "asc" });
   const [q, setQ] = useState(s.q);
   const dq = useDebounced(q, 250);
   useEffect(() => {
@@ -55,9 +55,9 @@ export function FrameworkRepository() {
   }, [dq]);
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["frameworks", s.q, s.type, s.jurisdiction, s.group],
+    queryKey: ["frameworks", s.q, s.type, s.jurisdiction, s.group, s.publisher],
     queryFn: () => apiGet<{ items: FrameworkRow[]; facets: { types: Facet[]; jurisdictions: Facet[]; groups: Facet[] } }>(
-      `/api/frameworks${qs({ q: s.q, type: s.type, jurisdiction: s.jurisdiction, group: s.group })}`,
+      `/api/frameworks${qs({ q: s.q, type: s.type, jurisdiction: s.jurisdiction, group: s.group, publisher: s.publisher })}`,
     ),
     placeholderData: keepPreviousData,
   });
@@ -128,7 +128,7 @@ export function FrameworkRepository() {
   ], []);
 
   const facets = data?.facets;
-  const active = [s.q, s.type, s.jurisdiction, s.group, s.versions].some(Boolean);
+  const active = [s.q, s.type, s.jurisdiction, s.group, s.publisher, s.versions].some(Boolean);
 
   return (
     <Page>
@@ -158,7 +158,8 @@ export function FrameworkRepository() {
             value={s.versions} onChange={(v) => set({ versions: v })} allLabel="All versions" aria-label="Versions"
             options={[{ value: "current", label: "Current versions", hint: n("CURRENT") }, { value: "historical", label: "Historical versions", hint: n("PREVIOUS") + n("RECORDED") }]}
           />
-          {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", type: "", jurisdiction: "", group: "", versions: "" }); }}><X /> Clear</Button>}
+          {s.publisher && <Badge tone="info" className="gap-1">Publisher: {s.publisher}<button aria-label="Clear publisher filter" onClick={() => set({ publisher: "" })}><X className="size-3" /></button></Badge>}
+          {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", type: "", jurisdiction: "", group: "", publisher: "", versions: "" }); }}><X /> Clear</Button>}
         </div>
         <div className="px-4 py-2 text-xs text-muted tabular">{rows.length} versions · {formatNumber(rows.reduce((t, r) => t + r.citations, 0))} obligations<span className="text-muted"> · </span><span className="text-accent">click any framework to inspect its sections and mapped controls</span></div>
         <DataTable

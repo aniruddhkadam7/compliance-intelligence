@@ -314,6 +314,8 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
     : {
         controls: ds.controls.length,
         testProcedures: ds.testProcedures.filter((t) => t.kind === "PROCEDURE").length,
+        // Procedure statements in the control register's own columns (e.g. CCF v2): written too, counted apart.
+        procedureStatements: ds.testProcedures.filter((t) => t.kind !== "PROCEDURE").length,
         procedureLinks: ds.procedureLinks.length,
         controlObligations: ds.controlObligations.length,
         evidence: ds.evidence.length,

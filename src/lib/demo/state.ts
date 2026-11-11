@@ -123,10 +123,51 @@ export async function recordControlUpload() {
   await save(s);
 }
 
-/** Back to the demo-ready state: every update offered again, nothing approved, client controls removed. */
+/**
+ * Back to the demo-ready state: every update offered again, nothing approved, client controls removed, and the connectors
+ * that watch a demo framework back on its previous version (NIST CSF 1.1, EU AI Act 2024) with their findings cleared.
+ */
 export async function rollback(actor: string, role: string) {
   await resetData(prisma, ["controls"], actor, role);
   await save(empty());
+  await resetDemoConnectors();
+}
+
+/** The version the platform is on for each demo framework family, and the newer version still offered (if any). */
+export async function demoBaselines() {
+  const [s, fws] = await Promise.all([getDemoState(), demoFrameworks()]);
+  return new Map<string, { key: DemoKey; applied: boolean; version: string; frameworkId: string | null; newer: string | null }>(fws.map((u) => {
+    const applied = statusOf(s, u.key) === "UPDATED";
+    return [u.family, { key: u.key, applied, version: applied ? u.current : u.previous, frameworkId: applied ? u.currentId : u.previousId, newer: applied ? null : u.current }] as const;
+  }));
+}
+export type DemoBaseline = NonNullable<ReturnType<Awaited<ReturnType<typeof demoBaselines>>["get"]>>;
+
+/**
+ * Connectors that watch a demo framework: linked back to the previous version, their findings (bell notifications and
+ * "to review" items) removed, and the workbook comparison marked as done for that version so the next check does not
+ * raise it again. Check history is kept; what the publisher publishes is still recorded there.
+ */
+export async function resetDemoConnectors() {
+  const { CONNECTORS } = await import("@/lib/connectors/registry");
+  const [fws, rows] = await Promise.all([demoFrameworks(), prisma.connector.findMany({ select: { id: true, state: true, lastStatus: true } })]);
+  for (const c of rows) {
+    const family = CONNECTORS.find((d) => d.id === c.id)?.framework?.family;
+    const u = fws.find((f) => f.family === family);
+    if (!u) continue;
+    const state = c.state as Record<string, unknown> | null;
+    await prisma.$transaction([
+      prisma.frameworkUpdate.deleteMany({ where: { connectorId: c.id } }),
+      prisma.connector.update({
+        where: { id: c.id },
+        data: {
+          frameworkId: u.previousId,
+          lastStatus: c.lastStatus === "CHANGED" ? "OK" : c.lastStatus,
+          ...(state && "workbookCompared" in state && { state: { ...state, workbookCompared: u.previous } }),
+        },
+      }),
+    ]);
+  }
 }
 
 /** Each update with the library documents of its previous and new version. */

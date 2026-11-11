@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { apiGet, apiSend } from "@/lib/client/api";
 import { useUrlState } from "@/lib/client/hooks";
 import { useMe } from "@/lib/client/use-me";
+import { isOverdue } from "@/lib/connectors/status";
 import { formatRelative } from "@/lib/utils";
 import { ConnectorTable, type ConnectorRow } from "./connector-table";
 import { UpdatesList } from "./updates-list";
@@ -65,8 +66,9 @@ export function UpdateCentre() {
     const name = items.find((c) => c.id === id)?.name ?? id;
     setRunning((r) => [...r, id]);
     try {
-      const r = await apiSend<{ status: "UP_TO_DATE" | "ALREADY_PREPARED" | "PREPARED"; version: string; sections?: number }>(`/api/connectors/${id}/import`);
+      const r = await apiSend<{ status: "UP_TO_DATE" | "IN_SOURCES" | "ALREADY_PREPARED" | "PREPARED"; version: string; sections?: number }>(`/api/connectors/${id}/import`);
       if (r.status === "PREPARED") toast.success(`${name}: version ${r.version} downloaded`, { description: `${r.sections} sections prepared as an update. It now shows as Update available in Sources.` });
+      else if (r.status === "IN_SOURCES") toast.info(`${name}: version ${r.version} is already offered`, { description: "Install it with Update in Sources." });
       else if (r.status === "ALREADY_PREPARED") toast.info(`${name}: version ${r.version} is already prepared as an update`);
       else toast.success(`${name}: the library already has the newest version (${r.version})`);
       qc.invalidateQueries();
@@ -96,8 +98,9 @@ export function UpdateCentre() {
     setTimeout(() => document.getElementById("update-centre")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
 
-  const lastSync = items.map((c) => c.lastSuccessAt).filter(Boolean).sort().pop();
+  const lastSuccess = items.map((c) => c.lastSuccessAt).filter(Boolean).sort().pop();
   const errors = items.filter((c) => c.lastStatus === "ERROR").length;
+  const overdue = items.filter((c) => c.enabled && isOverdue(c.lastCheckedAt, c.pollingMinutes)).length;
 
   return (
     <Page>
@@ -121,7 +124,7 @@ export function UpdateCentre() {
           { label: "Connectors", value: main.length, sub: `${main.filter((c) => c.enabled).length} enabled` },
           { label: "Updates to review", value: items.reduce((n, c) => n + c.openUpdates, 0), tone: "warning" },
           { label: "Connector errors", value: errors, tone: errors ? "warning" : "success", sub: errors ? "See status column" : "All healthy" },
-          { label: "Last successful sync", value: <span className="text-[15px]">{formatRelative(lastSync)}</span>, sub: "Sources are monitored automatically" },
+          { label: "Last successful check", value: <span className="text-[15px]">{formatRelative(lastSuccess)}</span>, sub: overdue ? `${overdue} of ${items.length} overdue for their scheduled check` : "All checked on schedule" },
         ]}
       />
       <ConnectorTable items={main} also={also} loading={connectors.isLoading} error={connectors.error} running={running} canWrite={canWrite} onCheck={(id) => check([id, ...(also[id] ?? []).map((c) => c.id)])} onSync={(id) => Promise.all([id, ...(also[id] ?? []).map((c) => c.id)].map(sync)).then(() => undefined)} onHistory={(id) => set({ history: id })} onReview={reviewFindings} onGetVersion={getNewVersion} />

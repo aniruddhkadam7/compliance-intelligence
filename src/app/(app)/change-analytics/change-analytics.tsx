@@ -54,7 +54,23 @@ const pendingOf = (u: Summary) => (approving(u) ? u.affectedControls - u.approve
 const hintOf = (u: Summary) =>
   u.status === "AVAILABLE" ? "Update not applied yet" : u.status === "REJECTED" ? "Update rejected" : u.uploadedAfter ? "Mapped to the new version"
     : pendingOf(u) ? `${pendingOf(u)} awaiting approval` : "All approved";
-const TABS = (d: Detail) => [["controls", `Affected controls (${d.controls.length})`], ["procedures", `Changed test procedures (${d.changedTestProcedures})`], ["analytics", "Analytics"]] as const;
+/** Distinct sections that changed test procedures stop mapping to ("removed") or start mapping to ("added"), with their users. */
+function sectionChanges(d: Detail, side: "removed" | "added") {
+  const m = new Map<string, { sec: Sec; uses: { control: string; tp: string }[] }>();
+  for (const c of d.controls) for (const tp of c.changed) for (const s of tp[side]) {
+    const e = m.get(s.id) ?? { sec: s, uses: [] };
+    e.uses.push({ control: c.controlName, tp: tp.id });
+    m.set(s.id, e);
+  }
+  return [...m.values()];
+}
+const TABS = (d: Detail) => [
+  ["controls", `Affected controls (${d.controls.length})`],
+  ["procedures", `Changed test procedures (${d.changedTestProcedures})`],
+  ["removed", `Sections removed (${sectionChanges(d, "removed").length})`],
+  ["added", `Sections added (${sectionChanges(d, "added").length})`],
+  ["analytics", "Analytics"],
+] as const;
 
 const APPROVE_STEPS = (d: Detail, names: string[]): ProgressStep[] => {
   const tps = d.controls.filter((c) => names.includes(c.controlName)).reduce((n, c) => n + c.changed.length, 0);
@@ -239,6 +255,11 @@ function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: s
   const filtered = !!(filters.q || filters.status || filters.family);
   const { approve, reject, reconsider, overlay, running } = useApprove(d);
   const approved = new Set(d.approved), rejectedSet = new Set(d.rejected);
+  // A tapped card opens its list below and scrolls to it; an open control detail is closed.
+  const go = (p: Record<string, string>) => {
+    set({ control: "", ...p });
+    setTimeout(() => document.getElementById("ca-tabs")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
   return (
     <>
       {overlay}
@@ -252,9 +273,17 @@ function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: s
               <div><div className="text-[11px] text-muted">Updated version</div><div className="text-2xl font-semibold tabular text-fg">{d.current}</div></div>
             </div>
           </div>
-          <div><div className={cn("text-2xl font-semibold tabular", d.affectedControls ? "text-warning" : "text-fg")}>{d.affectedControls}</div><div className="text-[11px] text-muted">Affected client controls</div></div>
-          {approving(d) && <div><div className="text-2xl font-semibold tabular text-success">{d.approved.length}</div><div className="text-[11px] text-muted">Approved</div></div>}
-          <div><div className="text-2xl font-semibold tabular text-fg">{d.totalControls}</div><div className="text-[11px] text-muted">Total client controls</div></div>
+          <button type="button" onClick={() => go({ tab: "controls", status: "" })} title="Show the affected controls" className={TAP}>
+            <div className={cn("text-2xl font-semibold tabular", d.affectedControls ? "text-warning" : "text-fg")}>{d.affectedControls}</div><div className="text-[11px] text-muted">Affected client controls</div>
+          </button>
+          {approving(d) && (
+            <button type="button" onClick={() => go({ tab: "controls", status: "approved" })} title="Show the approved controls" className={TAP}>
+              <div className="text-2xl font-semibold tabular text-success">{d.approved.length}</div><div className="text-[11px] text-muted">Approved</div>
+            </button>
+          )}
+          <Link href="/controls" title={`Open all client controls in ${TERMS.clientControls}`} className={TAP}>
+            <div className="text-2xl font-semibold tabular text-fg">{d.totalControls}</div><div className="text-[11px] text-muted">Total client controls</div>
+          </Link>
         </CardBody>
       </Card>
 
@@ -263,22 +292,23 @@ function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: s
       <StatStrip
         className="xl:grid-cols-5"
         items={[
-          { label: "Affected controls", value: d.affectedControls, tone: d.affectedControls ? "warning" : "default", sub: `of ${formatNumber(d.totalControls)} client controls` },
-          { label: "Test procedures changed", value: full.changedTestProcedures, tone: full.changedTestProcedures ? "warning" : "default", sub: `of ${formatNumber(d.totalTestProcedures)}` },
-          { label: "Test procedures unchanged", value: d.totalTestProcedures - full.changedTestProcedures, tone: "success", sub: "Same sections in both versions" },
-          { label: "Sections removed from mappings", value: d.removedSections, hint: "Distinct sections of the previous version that changed test procedures no longer map to" },
-          { label: "Sections added to mappings", value: d.addedSections, hint: "Distinct sections of the updated version that changed test procedures now map to" },
+          { label: "Affected controls", value: d.affectedControls, tone: d.affectedControls ? "warning" : "default", sub: `of ${formatNumber(d.totalControls)} client controls`, onClick: () => go({ tab: "controls" }), active: tab === "controls" },
+          { label: "Test procedures changed", value: full.changedTestProcedures, tone: full.changedTestProcedures ? "warning" : "default", sub: `of ${formatNumber(d.totalTestProcedures)}`, onClick: () => go({ tab: "procedures" }), active: tab === "procedures" },
+          { label: "Test procedures unchanged", value: d.totalTestProcedures - full.changedTestProcedures, tone: "success", sub: "Same sections in both versions · see Analytics", onClick: () => go({ tab: "analytics" }), active: tab === "analytics" },
+          { label: "Sections removed from mappings", value: d.removedSections, hint: "Distinct sections of the previous version that changed test procedures no longer map to", onClick: () => go({ tab: "removed" }), active: tab === "removed" },
+          { label: "Sections added to mappings", value: d.addedSections, hint: "Distinct sections of the updated version that changed test procedures now map to", onClick: () => go({ tab: "added" }), active: tab === "added" },
         ]}
       />
 
       {tab !== "analytics" && <FilterBar d={full} f={filters} set={set} shown={d.controls.length} />}
-      <div className="flex flex-wrap gap-1">
+      <div id="ca-tabs" className="flex scroll-mt-4 flex-wrap gap-1">
         {TABS(d).map(([id, text]) => (
           <button key={id} onClick={() => set({ tab: id })} className={cn("rounded-md border px-3 py-1.5 text-xs", tab === id ? "border-accent bg-accent-soft text-accent" : "border-border text-muted hover:text-fg")}>{text}</button>
         ))}
       </div>
       {tab === "controls" && <AffectedControls d={d} selected={control} set={set} approve={approve} reject={reject} reconsider={reconsider} running={running} filtered={filtered} />}
       {tab === "procedures" && <ChangedProcedures d={d} set={set} />}
+      {(tab === "removed" || tab === "added") && <SectionChanges d={d} side={tab} set={set} />}
       {tab === "analytics" && <Analytics d={full} />}
     </>
   );
@@ -510,6 +540,70 @@ function AffectedControls({ d, selected, set, approve, reject, reconsider, runni
 }
 
 const PAGE = 100;
+
+/** Tappable figure in the version-transition card. */
+const TAP = "-m-1.5 block rounded-md p-1.5 text-left transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none";
+
+/**
+ * The distinct sections changed test procedures stop mapping to (removed) or start mapping to (added): the updated
+ * framework first, then other frameworks, each with the controls and test procedures behind it.
+ */
+function SectionChanges({ d, side, set }: { d: Detail; side: "removed" | "added"; set: Set_ }) {
+  const [limit, setLimit] = useState(PAGE);
+  const [open, setOpen] = useState<string | null>(null);
+  const rows = useMemo(() => sectionChanges(d, side).sort((a, b) =>
+    Number(inFamily(d, b.sec)) - Number(inFamily(d, a.sec)) || a.sec.doc.localeCompare(b.sec.doc) || a.sec.identifier.localeCompare(b.sec.identifier, undefined, { numeric: true })), [d, side]);
+  if (!rows.length) return <Card><EmptyState icon={ListChecks} title={`No sections ${side}`} description={side === "removed" ? "No changed test procedure stops mapping to a section." : "No changed test procedure starts mapping to a new section."} /></Card>;
+  const removed = side === "removed";
+  return (
+    <Card>
+      <CardHeader
+        title={removed ? `Sections removed from mappings · ${d.family} ${d.previous} and others` : `Sections added to mappings · ${d.family} ${d.current} and others`}
+        description={removed ? "Sections that changed test procedures map to now and no longer map to once approved." : "Sections that changed test procedures map to once approved."}
+      />
+      <div className="max-h-[640px] overflow-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="sticky top-0 bg-surface-2">
+            <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
+              <th className="px-4 py-2">Section</th><th className="px-3 py-2">Title</th><th className="px-3 py-2">Framework</th><th className="px-4 py-2">Used by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice(0, limit).map(({ sec, uses }) => {
+              const controls = [...new Set(uses.map((u) => u.control))];
+              return (
+                <tr key={sec.id} className="border-b border-border align-top last:border-0">
+                  <td className="whitespace-nowrap px-4 py-2">
+                    <button onClick={() => setOpen(sec.id)} title="Open section details" className={cn("rounded border px-1.5 py-0.5 font-mono font-medium text-fg transition-colors", removed ? "border-danger/25 bg-danger-soft/40 line-through decoration-danger/40 hover:bg-danger-soft/70" : "border-success/30 bg-success-soft/50 hover:bg-success-soft/80")}>{sec.identifier}</button>
+                  </td>
+                  <td className="max-w-[360px] px-3 py-2 text-muted"><div className="line-clamp-2">{sec.title}</div></td>
+                  <td className="whitespace-nowrap px-3 py-2 text-fg-2">{sec.doc}</td>
+                  <td className="px-4 py-2">
+                    <div className="mb-1 text-[11px] text-muted">{uses.length} test procedure{uses.length === 1 ? "" : "s"} · {controls.length} control{controls.length === 1 ? "" : "s"}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {controls.slice(0, 8).map((c) => (
+                        <button key={c} onClick={() => set({ tab: "controls", control: c })} title="Open this control" className="rounded border border-border px-1.5 py-0.5 font-mono text-[11px] text-fg-2 hover:border-border-strong hover:text-fg">{c}</button>
+                      ))}
+                      {controls.length > 8 && <span className="px-1 text-[11px] text-subtle">+{controls.length - 8} more</span>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > limit && (
+        <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
+          <Button size="sm" onClick={() => setLimit(limit + PAGE)}>Show {Math.min(PAGE, rows.length - limit)} more</Button>
+          <Button size="sm" variant="ghost" onClick={() => setLimit(rows.length)}>Show all {formatNumber(rows.length)}</Button>
+          <span className="ml-auto tabular text-muted">{formatNumber(limit)} of {formatNumber(rows.length)}</span>
+        </div>
+      )}
+      <CitationDetailSheet citationId={open} onClose={() => setOpen(null)} onOpen={setOpen} />
+    </Card>
+  );
+}
 
 /** Every changed test procedure with its control. */
 function ChangedProcedures({ d, set }: { d: Detail; set: Set_ }) {

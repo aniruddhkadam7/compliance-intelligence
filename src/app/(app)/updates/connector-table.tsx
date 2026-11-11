@@ -1,41 +1,104 @@
 "use client";
-import { CheckCircle2, CircleDashed, Download, ExternalLink, History, Loader2, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpCircle, CheckCircle2, CircleDashed, Download, ExternalLink, History, Loader2, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
-import { ErrorState, Mono, TableSkeleton } from "@/components/common";
+import { ErrorState, TableSkeleton } from "@/components/common";
+import { connectorStatus, isOverdue } from "@/lib/connectors/status";
 import { formatDateTime, formatRelative } from "@/lib/utils";
 
 export interface ConnectorRow {
   id: string; name: string; sourceName: string; publisher: string; mechanism: string; mechanismLabel: string; description: string;
-  officialUrl: string; endpointUrl: string; pollingMinutes: number; enabled: boolean; currentVersion: string | null;
+  officialUrl: string; endpointUrl: string; pollingMinutes: number; enabled: boolean;
+  /** The connector's own acknowledged baseline (raw identifier); set on the first check and by Sync. */
+  currentVersion: string | null;
   lastCheckedAt: string | null; lastSuccessAt: string | null; lastStatus: string | null; lastError: string | null;
   framework: { id: string; short: string; versionLabel: string | null } | null;
-  lastCheck: { status: string; detectedVersion: string | null; message: string | null; httpStatus: number | null; durationMs: number | null } | null;
+  /** The version the platform uses. */
+  library: { version: string | null; label: string | null };
+  /** What the publisher's last successful response reported, and whether it is newer than the library's. */
+  latest: { version: string | null; label: string | null; newer: boolean; inSources: boolean };
+  lastCheck: { status: string; detectedVersion: string | null; message: string | null; httpStatus: number | null; durationMs: number | null; checkedAt: string; summary: string | null } | null;
   openUpdates: number; totalChecks: number; nextCheckAt: string | null;
   /** The publisher provides the framework as data, so this connector can download a new version in full. */
   fetchesContent: boolean;
+  /** Watches a demo framework: `version` is the one the demo is on, `newer` the update still offered in Sources. */
+  demo: { version: string; newer: string | null; applied: boolean } | null;
 }
 
-/** The connector's state. "N to review" is a button that opens those findings in the Update centre below. */
+const pill = "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors hover:brightness-95";
+const plural = (n: number, s: string) => `${n} ${s}${n === 1 ? "" : "s"}`;
+
+/** The connector's single status, with one line that explains it. */
 function Status({ c, onReview }: { c: ConnectorRow; onReview: (id: string) => void }) {
-  if (!c.lastCheckedAt) return <span className="flex items-center gap-1.5 text-xs text-muted"><CircleDashed className="size-3.5" /> Not checked</span>;
-  if (c.lastStatus === "ERROR")
-    return <Tooltip content={c.lastError}><span className="flex items-center gap-1.5 text-xs text-danger"><XCircle className="size-3.5" /> Error</span></Tooltip>;
-  if (c.openUpdates)
+  const kind = connectorStatus({ lastCheckedAt: c.lastCheckedAt, lastStatus: c.lastStatus, publisherNewer: c.latest.newer, openUpdates: c.openUpdates });
+  const review = c.openUpdates > 0 && (
+    <button onClick={() => onReview(c.id)} title="Show these findings below" className="text-[11px] font-medium text-warning hover:underline">
+      {plural(c.openUpdates, "finding")} to review
+    </button>
+  );
+
+  if (kind === "NOT_CHECKED") return <span className="flex items-center gap-1.5 text-xs text-muted"><CircleDashed className="size-3.5" /> Not checked yet</span>;
+  if (kind === "ERROR")
     return (
-      <button
-        onClick={() => onReview(c.id)} title="Show these findings below"
-        className="inline-flex items-center gap-1.5 rounded-md bg-warning-soft px-2 py-1 text-xs font-medium text-warning transition-colors hover:brightness-95"
-      >
-        <TriangleAlert className="size-3.5" /> {c.openUpdates} to review
-      </button>
+      <div className="space-y-1">
+        <span className="flex items-center gap-1.5 text-xs text-danger"><XCircle className="size-3.5" /> Check failed</span>
+        <div className="line-clamp-2 text-[11px] text-danger" title={c.lastError ?? undefined}>{c.lastError}</div>
+        <div className="text-[11px] text-muted">Last successful check: {formatRelative(c.lastSuccessAt)}</div>
+      </div>
     );
-  return <span className="flex items-center gap-1.5 text-xs text-success"><CheckCircle2 className="size-3.5" /> Connected</span>;
+  if (kind === "UPDATE_AVAILABLE") {
+    const { inSources } = c.latest;
+    const badge = <><ArrowUpCircle className="size-3.5" /> Update available</>;
+    return (
+      <div className="space-y-1">
+        {inSources
+          ? <Link href="/sources" title="Install it with Update in Sources" className={`${pill} bg-warning-soft text-warning`}>{badge}</Link>
+          : <span className={`${pill} bg-warning-soft text-warning hover:brightness-100`}>{badge}</span>}
+        <div className="text-[11px] text-muted">
+          {c.publisher} publishes <span className="text-fg-2">{c.latest.label}</span>; the platform uses <span className="text-fg-2">{c.library.label}</span>.
+          {" "}{inSources ? "Install it in Sources." : c.fetchesContent ? "Use Get new version to prepare it." : "Upload it in the Admin Console."}
+        </div>
+        {review}
+      </div>
+    );
+  }
+  if (kind === "REVIEW")
+    return (
+      <div className="space-y-1">
+        <button onClick={() => onReview(c.id)} title="Show these findings below" className={`${pill} bg-warning-soft text-warning`}>
+          <TriangleAlert className="size-3.5" /> {c.openUpdates} to review
+        </button>
+        <div className="text-[11px] text-muted">Findings from earlier checks are awaiting a decision.</div>
+      </div>
+    );
+  return (
+    <div className="space-y-1">
+      <span className="flex items-center gap-1.5 text-xs text-success"><CheckCircle2 className="size-3.5" /> Up to date</span>
+      <div className="text-[11px] text-muted">
+        {c.latest.version ? "The platform uses the publisher's latest version." : "No version is published as data; the official file is watched for changes."}
+      </div>
+    </div>
+  );
 }
 
 const freq = (m: number) => (m % 1440 === 0 ? (m === 1440 ? "Daily" : `Every ${m / 1440} days`) : m % 60 === 0 ? `Every ${m / 60} h` : `Every ${m} min`);
+
+/** When the connector last reached the publisher, what the response was, and whether scheduled checks are behind. */
+function LastChecked({ c }: { c: ConnectorRow }) {
+  const overdue = c.enabled && isOverdue(c.lastCheckedAt, c.pollingMinutes);
+  return (
+    <div className="space-y-0.5">
+      <Tooltip content={c.lastCheckedAt ? formatDateTime(c.lastCheckedAt) : "This connector has not run yet"}><span className="text-fg-2">{formatRelative(c.lastCheckedAt)}</span></Tooltip>
+      {c.lastCheck?.summary && c.lastStatus !== "ERROR" && <div className="text-[11px] text-muted" title={c.lastCheck.message ?? undefined}>{c.lastCheck.summary}</div>}
+      <Tooltip content={overdue ? `Scheduled checks run ${freq(c.pollingMinutes).toLowerCase()}; this source has not been checked since ${formatDateTime(c.lastCheckedAt)}.` : `Checked automatically, ${freq(c.pollingMinutes).toLowerCase()}`}>
+        <div className={`text-[11px] ${overdue ? "text-warning" : "text-subtle"}`}>{freq(c.pollingMinutes)}{overdue && " · overdue"}</div>
+      </Tooltip>
+    </div>
+  );
+}
 
 export function ConnectorTable({
   items, also = {}, loading, error, running, canWrite, onCheck, onSync, onHistory, onReview, onGetVersion,
@@ -46,7 +109,7 @@ export function ConnectorTable({
   return (
     <Card>
       <table className="w-full table-fixed text-left">
-        <colgroup><col className="w-[34%]" /><col className="w-[24%]" /><col className="w-[17%]" /><col className="w-[11%]" /><col className="w-[14%]" /></colgroup>
+        <colgroup><col className="w-[30%]" /><col className="w-[26%]" /><col className="w-[16%]" /><col className="w-[14%]" /><col className="w-[14%]" /></colgroup>
         <thead>
           <tr className="border-b border-border bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
             <th className="px-4 py-2">Connector</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Version</th>
@@ -57,7 +120,8 @@ export function ConnectorTable({
           {items.map((c) => {
             const busy = [c.id, ...(also[c.id] ?? []).map((x) => x.id)].some((id) => running.includes(id));
             const detected = c.lastCheck?.detectedVersion;
-            const versionDiff = detected && c.currentVersion && detected !== c.currentVersion;
+            // Sync adopts the publisher's version as this connector's baseline; a demo framework's version is set in Sources.
+            const syncDiff = !c.demo && !!detected && !!c.currentVersion && detected !== c.currentVersion;
             return (
               <tr key={c.id} className="border-b border-border align-top last:border-0">
                 <td className="px-4 py-3">
@@ -68,23 +132,25 @@ export function ConnectorTable({
                     <a href={c.officialUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-muted hover:text-accent">Official source <ExternalLink className="size-3" /></a>
                   </div>
                   {(also[c.id] ?? []).map((x) => (
-                    <div key={x.id} className="mt-1.5 text-[11px] text-muted">Also watches: <span className="text-fg-2">{x.sourceName}</span></div>
+                    <div key={x.id} className="mt-1.5 text-[11px] text-muted">
+                      Also watches: <span className="text-fg-2">{x.sourceName}</span>
+                      <div className={x.lastStatus === "ERROR" ? "text-danger" : "text-subtle"}>
+                        {x.lastStatus === "ERROR" ? `Check failed: ${x.lastError}` : x.lastCheck?.summary ?? "Not checked yet"}
+                        {x.lastCheckedAt && <Tooltip content={formatDateTime(x.lastCheckedAt)}><span> · {formatRelative(x.lastCheckedAt)}</span></Tooltip>}
+                      </div>
+                    </div>
                   ))}
                 </td>
-                <td className="px-3 py-3">
-                  <Status c={c} onReview={onReview} />
-                  {c.lastStatus === "ERROR" && <div className="mt-1 line-clamp-2 text-[11px] text-danger">{c.lastError}</div>}
-                  {c.lastCheck?.message && c.lastStatus !== "ERROR" && <div className="mt-1 line-clamp-2 text-[11px] text-muted" title={c.lastCheck.message}>{c.lastCheck.message}</div>}
-                </td>
+                <td className="px-3 py-3"><Status c={c} onReview={onReview} /></td>
                 <td className="px-3 py-3 text-xs">
-                  <div className="text-muted">Current</div>
-                  <Mono className="break-all text-[11px]">{c.currentVersion ?? "—"}</Mono>
-                  {versionDiff && <><div className="mt-1 text-muted">Detected</div><Mono className="break-all text-[11px] text-warning">{detected}</Mono></>}
+                  <div className="text-[11px] text-muted">In use</div>
+                  <div className="text-fg">{c.library.label ?? "—"}</div>
+                  <div className="mt-1.5 text-[11px] text-muted">Publisher</div>
+                  <Tooltip content={c.latest.version && c.latest.version !== c.latest.label ? `Identifier: ${c.latest.version}` : null}>
+                    <div className={c.latest.newer ? "text-warning" : "text-fg"}>{c.latest.label ?? "—"}</div>
+                  </Tooltip>
                 </td>
-                <td className="px-3 py-3 text-xs text-fg-2">
-                  <Tooltip content={formatDateTime(c.lastCheckedAt)}><span>{formatRelative(c.lastCheckedAt)}</span></Tooltip>
-                  <div className="text-[11px] text-subtle">{freq(c.pollingMinutes)}</div>
-                </td>
+                <td className="px-3 py-3 text-xs"><LastChecked c={c} /></td>
                 <td className="px-3 py-3">
                   <div className="flex flex-wrap justify-end gap-1">
                     <Button size="sm" disabled={!canWrite || busy} onClick={() => onCheck(c.id)}>{busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} Check</Button>
@@ -93,9 +159,13 @@ export function ConnectorTable({
                         <Button size="sm" disabled={!canWrite || busy} onClick={() => onGetVersion(c.id)}><Download /> Get new version</Button>
                       </Tooltip>
                     )}
-                    <Tooltip content={versionDiff ? `Adopt ${detected} as the current version` : "Adopt the latest detected state as baseline"}>
-                      <Button size="sm" variant={versionDiff ? "primary" : "ghost"} disabled={!canWrite || !c.lastCheck || c.lastStatus === "ERROR"} onClick={() => onSync(c.id)}>Sync</Button>
-                    </Tooltip>
+                    {c.demo ? (
+                      c.demo.newer && <Button size="sm" variant="primary" asChild><Link href="/sources">Update in Sources</Link></Button>
+                    ) : (
+                      <Tooltip content={syncDiff ? `Adopt ${c.latest.label} as this connector's baseline (the library and mappings are not changed)` : "Adopt the latest check as this connector's baseline"}>
+                        <Button size="sm" variant={syncDiff ? "primary" : "ghost"} disabled={!canWrite || !c.lastCheck || c.lastStatus === "ERROR"} onClick={() => onSync(c.id)}>Sync</Button>
+                      </Tooltip>
+                    )}
                     <Button size="icon-sm" variant="ghost" onClick={() => onHistory(c.id)} aria-label="Check history"><History /></Button>
                   </div>
                 </td>

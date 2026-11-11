@@ -79,7 +79,7 @@ function makeCheck(baseCelex: string, label: string) {
       contentHash: stableHash(unique.map((i) => i.celex).sort()),
       state: { items: unique },
       changes,
-      message: ctx.state ? (changes.length ? `${changes.length} new publication(s)` : `No change. ${unique.length} related publications known`) : `Baseline recorded: ${unique.length} related publications; latest consolidated ${detectedVersion}`,
+      message: ctx.state ? (changes.length ? `${changes.length} new publication${changes.length === 1 ? "" : "s"} since the previous check` : `No new publications since the previous check (${unique.length} related publications known)`) : `Baseline recorded: ${unique.length} related publications; latest consolidated ${detectedVersion}`,
       details: { latestConsolidated: latestConsolidated ?? null, counts: { amendments: count(unique, "amendment"), corrigenda: count(unique, "corrigendum"), consolidated: count(unique, "consolidated") } },
     };
   };

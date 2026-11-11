@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
 import { publisherOf } from "@/lib/queries/sources";
+import { listFrameworks } from "@/lib/queries/frameworks";
 import { TERMS } from "@/lib/terms";
 import { Capabilities } from "./capabilities";
 import { RollbackWord } from "./rollback-word";
@@ -16,8 +17,8 @@ const LAW = "Law or Regulation";
 
 const HEADLINES: { icon: LucideIcon; title: string; sub: string; detail: string; href: string }[] = [
   { icon: Layers, title: "Every rule you answer to.", sub: "One map of your controls.", detail: "Every law, regulation, standard and framework in scope, broken into requirements and linked to the controls you already run.", href: "/frameworks" },
-  { icon: RefreshCcw, title: "Compliance that keeps pace", sub: "with the rules.", detail: "When a rule changes, only the affected links are re-mapped, so your view is always current.", href: "/sources" },
-  { icon: Gauge, title: "Know where you stand.", sub: "Against every rule that applies.", detail: "See what's met, partly met, and open, from board view down to a single clause.", href: "/controls" },
+  { icon: RefreshCcw, title: "Compliance that keeps pace", sub: "with the rules.", detail: "Connectors watch official sources for new versions. When you install one, Change Analytics lists the affected controls for you to approve or reject.", href: "/sources" },
+  { icon: Gauge, title: "Know where you stand.", sub: "Against every rule that applies.", detail: "Your controls with the frameworks and requirements they are mapped to. Met / partly met / open classification is planned.", href: "/controls" },
 ];
 
 const tally = (items: string[]) => [...items.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map<string, number>())];
@@ -29,7 +30,9 @@ function Tag({ children }: { children: React.ReactNode }) {
 
 /** Overview: what the platform does, with the size of the document library. Global only: no client figures. */
 export default async function OverviewPage() {
-  const docs = await prisma.framework.findMany({ select: { name: true, type: true, jurisdiction: true } });
+  // The current version of each framework, exactly as the Source Document Library lists them, so every count here
+  // matches the filtered list its tile opens.
+  const docs = (await prisma.framework.count()) ? (await listFrameworks({ q: "", type: "", jurisdiction: "", group: "", publisher: "" })).filter((d) => d.versionStatus === "CURRENT") : [];
   if (docs.length === 0) {
     return (
       <Page>
@@ -43,10 +46,11 @@ export default async function OverviewPage() {
   }
 
   // Framework coverage: documents by publisher, plus laws and jurisdictions; largest first.
+  const lib = (p: Record<string, string>) => `/frameworks?${new URLSearchParams({ versions: "current", ...p })}`;
   const coverage = [
-    ...tally(docs.map((d) => publisherOf(d.name))).filter(([k]) => k !== "Other").map(([label, n]) => ({ n, label })),
-    { n: docs.filter((d) => d.type === LAW).length, label: "Laws and regulations" },
-    { n: new Set(docs.map((d) => d.jurisdiction).filter((j) => j && j !== "Global")).size, label: "Jurisdictions" },
+    ...tally(docs.map((d) => publisherOf(d.name))).filter(([k]) => k !== "Other").map(([label, n]) => ({ n, label, href: lib({ publisher: label }) })),
+    { n: docs.filter((d) => d.type === LAW).length, label: "Laws and regulations", href: lib({ type: LAW }) },
+    { n: new Set(docs.map((d) => d.jurisdiction).filter((j) => j && j !== "Global")).size, label: "Jurisdictions", href: lib({ sort: "jurisdiction" }) },
   ].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
 
   return (
@@ -58,7 +62,7 @@ export default async function OverviewPage() {
           <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Your compliance landscape, connected</div>
           <h1 className="mt-1.5 text-[26px] font-semibold leading-[1.2] tracking-tight text-fg sm:text-[30px]">One regulatory <RollbackWord>landscape</RollbackWord>.<br />One connected view of compliance.</h1>
           <p className="mt-3 max-w-5xl text-[13px] leading-relaxed text-muted">Regulations multiply every year. Requirements evolve, frameworks overlap, and manually mapping them to existing controls creates unnecessary complexity.</p>
-          <p className="mt-2 max-w-5xl text-[13px] leading-relaxed text-muted">Our AI-powered platform continuously tracks regulatory updates, identifies emerging requirements and intelligently maps them to your existing controls, helping you stay ahead of regulatory change and maintain a connected view of compliance.</p>
+          <p className="mt-2 max-w-5xl text-[13px] leading-relaxed text-muted">The platform tracks official sources for new framework versions, keeps a connected library of frameworks and their relationships, and shows which of your controls each version change affects. Control mappings today come from the manually prepared Excel mapping workbook; AI-powered regulatory analysis and automatic control mapping are planned.</p>
         </div>
       </section>
 
@@ -84,7 +88,7 @@ export default async function OverviewPage() {
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Capabilities</div>
           <h2 className="mt-0.5 text-[17px] font-semibold tracking-tight text-fg">What the platform offers</h2>
         </div>
-        <Capabilities frameworks={docs.length} coverage={coverage} />
+        <Capabilities frameworks={docs.length} frameworksHref={lib({})} coverage={coverage} />
       </section>
 
       {/* Closing banner */}

@@ -21,6 +21,8 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 const statusTone = (s: string) => (s === "COMPLETED" ? "success" : s === "FAILED" ? "danger" : "neutral");
+/** A validated file that was never confirmed changed nothing; say so instead of the internal "previewed". */
+const STATUS_LABEL: Record<string, string> = { COMPLETED: "Imported", FAILED: "Rejected", PREVIEWED: "Validated only", RUNNING: "Importing" };
 
 export function ImportHistory() {
   const [page, setPage] = useState(1);
@@ -33,13 +35,16 @@ export function ImportHistory() {
     { id: "createdAt", header: "Started", size: 150, enableSorting: false, cell: ({ row }) => <span className="whitespace-nowrap text-xs text-fg-2">{formatDateTime(row.original.createdAt)}</span> },
     { id: "kind", header: "Type", size: 120, enableSorting: false, cell: ({ row }) => <Badge tone="outline">{KIND_LABEL[row.original.kind] ?? row.original.kind}</Badge> },
     { id: "file", header: "File", enableSorting: false, cell: ({ row }) => <div><div className="text-fg">{row.original.fileName}</div><Mono className="text-[10.5px] text-subtle">sha256 {row.original.fileHash.slice(0, 16)}… · {(row.original.fileSize / 1024 / 1024).toFixed(2)} MB</Mono></div> },
-    { id: "status", header: "Status", size: 110, enableSorting: false, cell: ({ row }) => <Badge tone={statusTone(row.original.status)}>{row.original.status.toLowerCase()}</Badge> },
+    { id: "status", header: "Status", size: 110, enableSorting: false, cell: ({ row }) => <Badge tone={statusTone(row.original.status)}>{STATUS_LABEL[row.original.status] ?? row.original.status.toLowerCase()}</Badge> },
     {
       id: "counts", header: "Records", enableSorting: false,
       cell: ({ row }) => {
         const c = row.original.counts;
         if (!c) return <span className="text-subtle">—</span>;
-        return <span className="text-xs text-fg-2 tabular">{c.rows != null ? `${c.rows} rows` : `${formatNumber(c.frameworks)} frameworks · ${formatNumber(c.citations)} citations · ${formatNumber(c.controls)} controls`}</span>;
+        // Imported: records written (counted from the database). Otherwise: what the file holds; nothing was written.
+        const parts = ([["controls", "controls"], ["testProcedures", "test procedures"], ["crossFramework", "relationships"], ["librarySections", "library sections"], ["sectionsWritten", "library sections"], ["citations", "obligations"], ["rows", "rows"]] as const)
+          .filter(([k]) => c[k] != null).map(([k, l]) => `${formatNumber(c[k])} ${l}`);
+        return <span className="text-xs text-fg-2 tabular">{row.original.status === "COMPLETED" ? "Written: " : "In file: "}{parts.join(" · ") || "—"}</span>;
       },
     },
     { id: "issues", header: "Issues", size: 70, enableSorting: false, cell: ({ row }) => <span className="tabular">{row.original._count.issues}</span> },

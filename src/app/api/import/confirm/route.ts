@@ -19,16 +19,19 @@ export const POST = handle(async (req: Request) => {
   const { previewJobId } = Fields.parse({ previewJobId: form.get("previewJobId") });
   const file = await readUploadedWorkbook(form);
   const job = await prisma.importJob.findUnique({ where: { id: previewJobId } });
-  if (!job || job.status !== "PREVIEWED") throw new HttpError(409, "Preview not found or already used. Preview the file again.");
+  if (!job) throw new HttpError(409, "Validation record not found. Upload the file again.");
+  if (job.status === "COMPLETED") throw new HttpError(409, "This file has already been imported from this validation. Upload it again to import it a second time.");
+  if (job.status !== "PREVIEWED") throw new HttpError(409, "This validation was already used. Upload the file again.");
   if (job.fileHash !== sha256(file.buffer)) throw new HttpError(409, "This file differs from the previewed file.");
   if (!(IMPORT_KINDS as string[]).includes(job.kind)) throw new HttpError(409, "This preview was made with an older import type. Preview the file again.");
 
   const out = await confirmImport(prisma, job.kind as ImportKind, file, session.sub, { previewJobId });
+  // A rejected import is a result, not a server error: it comes back with the findings that blocked it. Nothing was written.
   if (out.status === "FAILED")
-    throw new HttpError(422, "Import rejected: the workbook has blocking validation errors.", out.issues.filter((i) => i.severity === "ERROR").slice(0, 50));
+    return NextResponse.json({ jobId: out.jobId, status: out.status, kind: job.kind, counts: {}, completedAt: out.completedAt, report: out.report, errors: out.issues.filter((i) => i.severity === "ERROR").slice(0, 50) });
   // Monitoring connectors are linked to documents by family/version; re-link after the library changes.
   if (job.kind === "LIBRARY") await ensureConnectors();
   // Newly uploaded controls point to the version each demo framework is on now.
   if (job.kind === "CLIENT_CONTROLS") await recordControlUpload();
-  return NextResponse.json({ jobId: out.jobId, status: out.status, kind: job.kind, counts: out.counts });
+  return NextResponse.json({ jobId: out.jobId, status: out.status, kind: job.kind, counts: out.counts, completedAt: out.completedAt, report: out.report, errors: [] });
 });

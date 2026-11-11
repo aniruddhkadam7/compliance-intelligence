@@ -5,19 +5,17 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { HttpError } from "@/lib/auth/server";
 import { startStructuredIngestion } from "@/lib/ai/ingest";
+import { demoBaselines } from "@/lib/demo/state";
 import { getDefinition } from "./registry";
 
+import { compareVersionLabels } from "./status";
+
+export { compareVersionLabels };
 const json = (v: unknown) => v as Prisma.InputJsonValue;
-const numbers = (v: string | null | undefined) => ((v ?? "").match(/\d+(?:\.\d+)*/)?.[0] ?? "").split(".").map(Number);
-/** Versions compared by their numbers, ignoring trailing zeros ("2.0" equals "2"). */
-export const compareVersionLabels = (a: string | null | undefined, b: string | null | undefined) => {
-  const x = numbers(a), y = numbers(b);
-  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
-  return 0;
-};
 
 export type ContentImport =
   | { status: "UP_TO_DATE"; version: string }
+  | { status: "IN_SOURCES"; version: string }
   | { status: "ALREADY_PREPARED"; version: string; draftId: string }
   | { status: "PREPARED"; version: string; draftId: string; sections: number };
 
@@ -34,6 +32,9 @@ export async function importConnectorContent(connectorId: string, actor: string)
   if (!current) throw new HttpError(409, `${def.framework.family} is not in the library yet.`);
 
   const content = await def.fetchContent({ state: (connector.state as Record<string, unknown> | null) ?? null });
+  // Demo framework still on its previous version: the newer version is already offered as an update in Sources.
+  const demo = (await demoBaselines()).get(def.framework.family);
+  if (demo?.newer && compareVersionLabels(content.version, demo.newer) === 0) return { status: "IN_SOURCES", version: content.version };
   if (versions.some((v) => compareVersionLabels(v.versionLabel, content.version) === 0) || compareVersionLabels(content.version, current.versionLabel) <= 0)
     return { status: "UP_TO_DATE", version: content.version };
 

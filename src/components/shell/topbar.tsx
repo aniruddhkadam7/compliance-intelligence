@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator, DropdownTrigger } from "@/components/ui/dropdown";
 import { Badge } from "@/components/ui/badge";
 import { apiGet } from "@/lib/client/api";
-import { formatRelative, truncate } from "@/lib/utils";
+import { formatDate, formatRelative, truncate } from "@/lib/utils";
 import { EyLogo } from "./ey-logo";
 import { GlobalSearch } from "./global-search";
 import { dismissImportJob, useImportJobs } from "@/lib/client/import-jobs";
@@ -31,20 +31,24 @@ function ImportStatus() {
   );
 }
 
-interface UpdateLite {
-  id: string;
-  title: string;
-  changeType: string;
-  detectedAt: string;
-  connector: { name: string };
+interface NotificationLite {
+  id: string; kind: string; framework: string; fromVersion: string | null; version: string | null;
+  date: string | null; dateLabel: string; status: string; detail: string | null; href: string;
 }
+
+const KIND_LABEL: Record<string, string> = {
+  UPDATE_AVAILABLE: "New version", READY_TO_INSTALL: "New version", VERSION_CHANGE: "Version change", NEW_PUBLICATION: "New publication",
+  CONTENT_CHANGE: "Content change", NEW_INFORMATIVE_REFERENCE: "New reference", CONNECTOR_ERROR: "Connector",
+};
+const STATUS_TONE: Record<string, "warning" | "info" | "danger" | "accent"> = { "Update available": "warning", "Ready to install": "accent", "To review": "info", Error: "danger" };
 
 export function Topbar({ user, role, onMenu }: { user: string; role: string; onMenu: () => void }) {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
-  const { data } = useQuery({
-    queryKey: ["updates", "new"],
-    queryFn: () => apiGet<{ items: UpdateLite[]; total: number }>("/api/updates?status=NEW&pageSize=6"),
+  // Same backend state as Sources and the Connector page; refreshed when the panel opens and every minute.
+  const { data, refetch } = useQuery({
+    queryKey: ["updates", "notifications"],
+    queryFn: () => apiGet<{ items: NotificationLite[]; total: number }>("/api/notifications"),
     refetchInterval: 60_000,
   });
 
@@ -63,29 +67,38 @@ export function Topbar({ user, role, onMenu }: { user: string; role: string; onM
       <GlobalSearch />
       <div className="ml-auto flex items-center gap-1">
         <ImportStatus />
-        <Dropdown>
+        <Dropdown onOpenChange={(open) => { if (open) void refetch(); }}>
           <DropdownTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Notifications" className="relative">
+            <Button variant="ghost" size="icon-sm" aria-label={`Notifications${data?.total ? ` (${data.total})` : ""}`} className="relative">
               <Bell />
-              {!!data?.total && <span className="absolute right-1 top-1 size-1.5 rounded-full bg-warning" />}
+              {!!data?.total && <span className="absolute -right-0.5 -top-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-warning px-0.5 text-[9px] font-semibold leading-none text-white tabular">{data.total}</span>}
             </Button>
           </DropdownTrigger>
-          <DropdownContent className="w-[340px] p-0">
+          <DropdownContent className="w-[400px] p-0">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <span className="text-[13px] font-semibold">Framework updates</span>
-              <Badge tone={data?.total ? "warning" : "neutral"}>{data?.total ?? 0} to review</Badge>
+              <Badge tone={data?.total ? "warning" : "neutral"}>{data?.total ?? 0} need attention</Badge>
             </div>
-            <div className="max-h-[320px] overflow-y-auto p-1">
-              {!data?.items.length && <p className="px-3 py-6 text-center text-xs text-muted">No unreviewed updates.</p>}
-              {data?.items.map((u) => (
-                <DropdownItem key={u.id} onSelect={() => router.push(`/updates?update=${u.id}`)} className="flex-col items-start gap-0.5">
-                  <span className="text-[13px] text-fg">{truncate(u.title, 70)}</span>
-                  <span className="text-[11px] text-muted">{u.connector.name} · {formatRelative(u.detectedAt)}</span>
+            <div className="max-h-[380px] overflow-y-auto p-1">
+              {!data?.items.length && <p className="px-3 py-6 text-center text-xs text-muted">No framework updates, findings or connector errors.</p>}
+              {data?.items.map((n) => (
+                <DropdownItem key={n.id} onSelect={() => router.push(n.href)} className="flex-col items-stretch gap-0.5 py-2">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="truncate text-[13px] font-medium text-fg">{n.framework}</span>
+                    <Badge tone={STATUS_TONE[n.status] ?? "neutral"} className="shrink-0">{n.status}</Badge>
+                  </span>
+                  <span className="text-[12px] text-fg-2">
+                    {KIND_LABEL[n.kind] ?? n.kind}
+                    {n.version && <>: {n.fromVersion && n.fromVersion !== n.version && <span className="tabular">{truncate(n.fromVersion, 24)} → </span>}<b className="font-medium tabular">{truncate(n.version, 28)}</b></>}
+                  </span>
+                  {n.detail && <span className="line-clamp-2 text-[11px] text-muted">{n.detail}</span>}
+                  <span className="text-[11px] text-subtle">{n.dateLabel} {n.date ? (n.dateLabel === "Published" ? formatDate(n.date) : formatRelative(n.date)) : "date not available"}</span>
                 </DropdownItem>
               ))}
             </div>
-            <div className="border-t border-border px-3 py-2">
-              <Link href="/updates" className="text-xs font-medium text-accent hover:underline">Open update centre</Link>
+            <div className="flex items-center justify-between border-t border-border px-3 py-2">
+              <Link href="/sources" className="text-xs font-medium text-accent hover:underline">Open Sources</Link>
+              <Link href="/updates" className="text-xs font-medium text-accent hover:underline">Open Connectors</Link>
             </div>
           </DropdownContent>
         </Dropdown>

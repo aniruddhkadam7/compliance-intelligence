@@ -105,7 +105,7 @@ async function comparisons(pairs: { id: string; previousId: string }[]) {
  * Uploaded new versions not yet installed, newest per document. "released" means an admin reviewed it and
  * users can apply it with the Update button; otherwise it is still in admin review.
  */
-async function pendingImports(frameworkId?: string) {
+export async function pendingImports(frameworkId?: string) {
   const drafts = await prisma.aiIngestion.findMany({
     where: { status: "READY", matchKind: "NEW_VERSION", matchFrameworkId: frameworkId ?? { not: null } },
     orderBy: { createdAt: "desc" }, select: { id: true, matchFrameworkId: true, detected: true, createdAt: true },

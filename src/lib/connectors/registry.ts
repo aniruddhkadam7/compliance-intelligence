@@ -3,6 +3,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { shortName } from "@/lib/frameworks";
+import { demoBaselines } from "@/lib/demo/state";
 import { ConnectorError } from "./http";
 import { eurlexConnectors } from "./eurlex";
 import { nistConnectors } from "./nist";
@@ -15,9 +16,10 @@ const json = (v: unknown) => v as Prisma.InputJsonValue;
 
 /** Upserts static connector metadata (idempotent; preserves state and history). */
 export async function ensureConnectors() {
-  const frameworks = await prisma.framework.findMany({ select: { id: true, family: true, versionLabel: true } });
+  const [frameworks, baselines] = await Promise.all([prisma.framework.findMany({ select: { id: true, family: true, versionLabel: true } }), demoBaselines()]);
+  // A demo framework is linked to the version the demo is on (NIST CSF 1.1 until its update is applied in Sources).
   const fwId = (m: ConnectorDefinition["framework"]) =>
-    m ? frameworks.find((f) => f.family === m.family && (!m.version || f.versionLabel === m.version))?.id ?? null : null;
+    !m ? null : baselines.get(m.family)?.frameworkId ?? frameworks.find((f) => f.family === m.family && (!m.version || f.versionLabel === m.version))?.id ?? null;
   for (const c of CONNECTORS) {
     const data = {
       name: c.name, sourceName: c.sourceName, publisher: c.publisher, mechanism: c.mechanism,
@@ -94,11 +96,13 @@ export async function runConnectorCheck(id: string, opts: { trigger: "MANUAL" | 
 
 /** Adopt the latest detected version as the acknowledged baseline. Mappings are untouched. */
 export async function syncConnector(id: string, actor: string) {
+  const family = getDefinition(id)?.framework?.family;
+  if (family && (await demoBaselines()).has(family)) throw new Error(`The ${family} version is set by installing its update in Sources.`);
   const last = await prisma.connectorCheck.findFirst({ where: { connectorId: id, status: { not: "ERROR" } }, orderBy: { checkedAt: "desc" } });
   if (!last) throw new Error("Run a check before synchronising.");
   const before = await prisma.connector.findUniqueOrThrow({ where: { id } });
   await prisma.$transaction([
-    prisma.connector.update({ where: { id }, data: { currentVersion: last.detectedVersion ?? before.currentVersion, currentHash: last.contentHash, lastSuccessAt: new Date() } }),
+    prisma.connector.update({ where: { id }, data: { currentVersion: last.detectedVersion ?? before.currentVersion, currentHash: last.contentHash } }),
     prisma.auditLog.create({ data: { actor, action: "CONNECTOR_SYNC", entity: "Connector", entityId: id, details: json({ from: before.currentVersion, to: last.detectedVersion }) } }),
   ]);
   return { previous: before.currentVersion, current: last.detectedVersion ?? before.currentVersion };

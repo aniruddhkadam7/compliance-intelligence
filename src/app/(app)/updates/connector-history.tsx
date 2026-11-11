@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState, Mono } from "@/components/common";
 import { apiGet } from "@/lib/client/api";
+import { readableVersion } from "@/lib/connectors/status";
 import { formatDateTime } from "@/lib/utils";
 
 interface Detail {
@@ -35,7 +36,7 @@ export function ConnectorHistorySheet({ id, onClose }: { id: string | null; onCl
             <div className="flex flex-wrap gap-x-4 text-[11px] text-subtle">
               {c.httpStatus != null && <span>HTTP {c.httpStatus}</span>}
               {c.durationMs != null && <span>{(c.durationMs / 1000).toFixed(1)} s</span>}
-              {c.detectedVersion && <span>version <Mono className="text-[11px]">{c.detectedVersion}</Mono></span>}
+              {c.detectedVersion && <span title={c.detectedVersion}>version {readableVersion(null, c.detectedVersion)}</span>}
               {c.contentHash && <span>hash <Mono className="text-[11px]">{c.contentHash.slice(0, 12)}</Mono></span>}
             </div>
           </li>

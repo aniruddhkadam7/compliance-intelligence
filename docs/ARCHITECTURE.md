@@ -31,9 +31,9 @@ prisma/schema.prisma   data model
 
 | Connector | Source | Mechanism | Detects |
 |---|---|---|---|
-| NIST CSF 2.0 · CPRT | `csrc.nist.gov/extensions/nudp/services/json/nudp/framework/version/csf_2_0_0/export/json` | Official JSON export. A download endpoint, not a versioned API. | Version change; element-level content change (6 functions / 34 categories / 185 subcategories hashed individually); successor releases (`csf_2_1_0`, …) appearing in CPRT |
+| NIST CSF · CPRT | `csrc.nist.gov/extensions/nudp/services/json/nudp/framework/version/csf_2_0_0/export/json` | Official JSON export. A download endpoint, not a versioned API. | Version change; element-level content change (6 functions / 34 categories / 185 subcategories hashed individually); successor releases (`csf_2_1_0`, …) appearing in CPRT |
 | NIST SP 800-53 Rev 5 · OSCAL | `usnistgov/oscal-content` catalog JSON on GitHub | Machine-readable file, ETag-conditional | Version change (the workbook cites r5.1.1, the catalog is 5.2.0); controls added or withdrawn; republication |
-| NIST CSWP 29 · document watch | CSF 2.0 PDF | HTTP fingerprint (ETag, Last-Modified, size). **Not an API.** The server rejects HEAD, so a 1-byte ranged GET is used. | File changed |
+| NIST CSWP 29 · document watch | CSF publication PDF | HTTP fingerprint (ETag, Last-Modified, size). **Not an API.** The server rejects HEAD, so a 1-byte ranged GET is used. | File changed |
 | GDPR / EU AI Act · CELLAR | `publications.europa.eu/webapi/rdf/sparql` | Official SPARQL endpoint (CDM relationships) | New consolidated versions (version change), corrigenda (content change), amending acts (new publication) |
 
 NIST OLIR has no machine-readable feed at the time of writing; its catalogue is an HTML page. The `NEW_INFORMATIVE_REFERENCE` change type exists for when one becomes available. CPRT's CSF export is the closest current source of informative-reference data.
