@@ -129,7 +129,7 @@ export function ConnectorTable({
                 <td className="px-3 py-3 text-xs">
                   <div className="text-[11px] text-muted">In use</div>
                   <div className="text-fg">{c.library.label ?? "—"}</div>
-                  <div className="mt-1.5 text-[11px] text-muted">Publisher</div>
+                  <div className="mt-1.5 text-[11px] text-muted">Latest</div>
                   <Tooltip content={c.latest.version && c.latest.version !== c.latest.label ? `Identifier: ${c.latest.version}` : null}>
                     <div className={c.latest.newer ? "text-warning" : "text-fg"}>{c.latest.label ?? "—"}</div>
                   </Tooltip>

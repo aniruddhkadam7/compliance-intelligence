@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Grid3x3, Network, Share2, TableProperties, Upload } from "lucide-react";
+import { Grid3x3, Network, Share2, Upload } from "lucide-react";
 import { EmptyState, ErrorState, Page, PageHeader } from "@/components/common";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,6 @@ import { useUrlState } from "@/lib/client/hooks";
 import type { FrameworkConnection } from "@/lib/queries/framework-matrix";
 import { TERMS } from "@/lib/terms";
 import { cn, formatNumber } from "@/lib/utils";
-import { CcmCrosswalkView } from "./ccm-crosswalk";
 import { RelationshipGraph } from "./relationship-graph";
 
 interface Doc { id: string; short: string; type: string | null; sourceId?: string; versionStatus?: string }
@@ -35,13 +34,12 @@ function heat(n: number, max: number): React.CSSProperties {
  * Framework traceability, from supplied relationship files only (nothing is inferred).
  *   Relationship Matrix every framework against every other: the number of mapped relationships in each cell.
  *   Relationship Graph  any two frameworks: baseline and target, the graph, and the mapped controls side by side.
- *   CCM Cross-Mapping   one row per CSA CCM control with the controls it maps to in every other framework.
  * Kept separate from custom control traceability (control → test procedures → obligations), on the control pages.
  */
 export function MappingExplorer() {
   // The Relationship Graph is the first and default view; the full matrix is the second.
   const [s, set] = useUrlState({ a: "", b: "", view: "graph" });
-  const view = s.view === "overview" || s.view === "ccm" ? s.view : "graph";
+  const view = s.view === "overview" ? s.view : "graph";
 
   const docs = useQuery({ queryKey: ["frameworks", "", "", "", ""], queryFn: () => apiGet<{ items: Doc[] }>("/api/frameworks") });
   const pairs = useQuery({ queryKey: ["fm-pairs", "supplied"], queryFn: () => apiGet<Pair[]>(`/api/framework-matrix${qs({ basis: "supplied" })}`) });
@@ -64,12 +62,9 @@ export function MappingExplorer() {
         <TabsList className="mb-4">
           <TabsTrigger value="graph"><Share2 /> Relationship Graph</TabsTrigger>
           <TabsTrigger value="overview"><Grid3x3 /> Relationship Matrix</TabsTrigger>
-          <TabsTrigger value="ccm"><TableProperties /> CSA CCM Cross-Mapping</TabsTrigger>
         </TabsList>
 
-        {/* Reads its own data (the CCM rows), so it does not wait for the framework pairs. */}
-        <TabsContent value="ccm"><CcmCrosswalkView /></TabsContent>
-        {view === "ccm" ? null : loading ? <Skeleton className="h-[420px]" /> : error ? (
+        {loading ? <Skeleton className="h-[420px]" /> : error ? (
           <Card><ErrorState error={error} onRetry={() => { docs.refetch(); pairs.refetch(); }} /></Card>
         ) : !pairs.data?.length ? (
           <Card>

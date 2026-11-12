@@ -12,7 +12,7 @@ export const TERMS = {
   obligation: "Obligation",
   frameworkMapping: "Framework Relationships", // previously "Framework Matrix", before that "Framework Mapping"
   clientControls: "Custom Control Mapping", // previously "Client Control Mapping"
-  ccfMapping: "CCF Cross Mapping", // custom controls against every framework, control level
+  ccfMapping: "Custom Framework Cross Mapping", // previously "CCF Cross Mapping"; // custom controls against every framework, control level
   versionImpact: "Change Analytics", // previously "Version Impact"
   data: "Data & Imports",
   updates: "Updates & Monitoring",

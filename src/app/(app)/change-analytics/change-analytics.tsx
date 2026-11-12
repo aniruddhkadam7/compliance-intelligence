@@ -101,7 +101,7 @@ export function ChangeAnalytics() {
       <PageHeader
         title={TERMS.versionImpact}
         description="What changed between a framework's previous version and its updated version, which custom controls are affected, and approval of their mapping to the new version."
-        actions={<Button asChild size="sm"><Link href="/controls">Open {TERMS.clientControls} <ArrowRight /></Link></Button>}
+        actions={<Button asChild size="sm"><Link href="/controls">View Control Mappings <ArrowRight /></Link></Button>}
       />
       {list.isLoading && <Skeleton className="h-60" />}
       {!!list.error && <Card><ErrorState error={list.error} onRetry={list.refetch} /></Card>}
@@ -163,7 +163,7 @@ function useApprove(d: Detail) {
       toast.success(`${names.length === 1 ? names[0] : `${names.length} controls`} mapped to ${d.family} ${d.current}`, {
         action: names.length === 1
           ? { label: "Open control", onClick: () => router.push(`/controls/${encodeURIComponent(names[0])}`) }
-          : { label: `Open ${TERMS.clientControls}`, onClick: () => router.push("/controls") },
+          : { label: "View Control Mappings", onClick: () => router.push("/controls") },
       });
       await refreshEverywhere();
     } catch (e) {
@@ -206,7 +206,7 @@ function FlowBanner({ d, onApproveAll, running }: { d: Detail; onApproveAll: () 
     return box("warning", <CheckCircle2 className="size-4 text-warning" />, <><b>All {formatNumber(d.affectedControls)} affected controls reviewed.</b> {formatNumber(d.approved.length)} approved and now on {d.family} {d.current}; {formatNumber(d.rejected.length)} rejected and kept on {d.previous}. A rejected control can be reconsidered at any time.</>);
   if (!pending)
     return box("success", <CheckCircle2 className="size-4 text-success" />, <><b>All {formatNumber(d.affectedControls)} affected controls approved.</b> They now point to {d.family} {d.current}.</>,
-      <Button asChild size="sm" variant="primary"><Link href="/controls">Open {TERMS.clientControls} <ArrowRight /></Link></Button>);
+      <Button asChild size="sm" variant="primary"><Link href="/controls">View Control Mappings <ArrowRight /></Link></Button>);
   return box("warning", <BellRing className="size-4 text-warning" />,
     <><b>{formatNumber(pending)} of {formatNumber(d.affectedControls)} affected controls await approval.</b> Approved controls move to {d.family} {d.current}; the rest stay on {d.previous}.{d.rejected.length ? ` ${formatNumber(d.rejected.length)} rejected.` : ""}</>,
     canWrite && <Button size="sm" variant="primary" disabled={running} onClick={onApproveAll}><Check /> Approve all ({formatNumber(pending)})</Button>);

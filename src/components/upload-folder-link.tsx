@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ExternalLink, FolderOpen, Loader2, Save, Settings2 } from "lucide-react";
+import { ExternalLink, FolderOpen, Info, Loader2, Save, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -72,7 +72,7 @@ export function UploadFromCloud({ className }: { className?: string }) {
       ) : (
         <>
           <div className="max-w-sm text-xs text-muted">
-            {url ? <>Open the shared folder ({host}), download the workbook and drop it into the upload box. Picking the file directly from SharePoint is not connected yet.</>
+            {url ? <>Open the shared folder ({host}), download the workbook and drop it into the upload box.</>
               : isAdmin ? "No shared folder set yet. Add the team's SharePoint folder link so everyone uploads the same file."
               : "No shared folder set yet; an admin adds its link. Upload the file from your computer meanwhile."}
           </div>
@@ -82,6 +82,13 @@ export function UploadFromCloud({ className }: { className?: string }) {
             {isAdmin && <Button size="sm" variant={url ? "ghost" : "primary"} onClick={() => { setValue(url ?? ""); setEditing(true); }}><Settings2 /> {url ? "Change folder" : "Set shared folder"}</Button>}
           </div>
         </>
+      )}
+      {/* Shown whether or not a folder is set (team decision): the file is fetched from SharePoint by hand. */}
+      {!editing && (
+        <p className="mt-1 flex max-w-sm items-start gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-left text-[11px] text-muted">
+          <Info className="mt-px size-3 shrink-0" />
+          <span><b className="font-medium text-fg-2">Note:</b> Automatic download from SharePoint is not available. Running scripts against SharePoint is an operational constraint, so the file is downloaded from the folder and uploaded here.</span>
+        </p>
       )}
     </div>
   );
