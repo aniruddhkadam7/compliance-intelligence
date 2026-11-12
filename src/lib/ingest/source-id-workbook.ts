@@ -55,12 +55,12 @@ function selectionSheet(wb: ParsedWorkbook, register: ParsedSheet | undefined) {
 
 /** Workbook contains a document library ("Citation Sources"). */
 export const hasLibrary = (wb: ParsedWorkbook) => hasColumns(wb.sheets.get(SOURCE_ID_SHEETS.obligations), OBLIGATION_COLUMNS);
-/** Workbook contains client controls mapped to Source Section IDs. */
+/** Workbook contains custom controls mapped to Source Section IDs. */
 export const hasClientControls = (wb: ParsedWorkbook) => !!controlSheet(wb) && !!mappingSheet(wb);
 
 /**
  * library:  the document library (frameworks + obligations) from "Citation Sources".
- * controls: client controls and test procedures, with Source Section IDs resolved through `sectionLookup`
+ * controls: custom controls and test procedures, with Source Section IDs resolved through `sectionLookup`
  *           (Source Section ID -> existing obligation id in the library).
  */
 export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | "controls", sectionLookup: Map<string, string> = new Map()): NormaliseResult {
@@ -92,14 +92,14 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
   if (mode === "library" && !obSheet)
     issues.push({ severity: "ERROR", code: "MISSING_SHEET", sheet: SOURCE_ID_SHEETS.obligations, message: `Worksheet "${SOURCE_ID_SHEETS.obligations}" with the obligations was not found.` });
   if (mode === "controls" && !ctlSheet)
-    issues.push({ severity: "ERROR", code: "MISSING_SHEET", message: "No worksheet with a “New Common Control Name” column (the client controls) was found." });
+    issues.push({ severity: "ERROR", code: "MISSING_SHEET", message: "No worksheet with a “New Common Control Name” column (the custom controls) was found." });
   if (mode === "controls" && !mapSheet)
     issues.push({ severity: "ERROR", code: "MISSING_SHEET", message: "No worksheet with Control ID, Test Procedure ID and Source Section ID columns was found." });
   if (mode === "controls" && sectionLookup.size === 0)
-    issues.push({ severity: "ERROR", code: "LIBRARY_EMPTY", message: "The document library is empty. Import the library before importing client controls." });
+    issues.push({ severity: "ERROR", code: "LIBRARY_EMPTY", message: "The document library is empty. Import the library before importing custom controls." });
   for (const s of sheets) {
     if (s.missingRequired.length) issues.push({ severity: "ERROR", code: "MISSING_COLUMNS", sheet: s.name, message: `Missing required column(s): ${s.missingRequired.join(", ")}` });
-    if (s.role === "UNRECOGNISED" || (mode === "library" && (s.role === "CONTROLS" || s.role === "PROCEDURE_MAP")) || (mode === "controls" && ["CITATIONS", "SOURCE_LIST", "SOURCE_METADATA"].includes(s.role))) issues.push({ severity: "INFO", code: "SHEET_NOT_IMPORTED", sheet: s.name, message: mode === "library" ? "Worksheet is not used by the library import." : "Worksheet is not used by the client control import." });
+    if (s.role === "UNRECOGNISED" || (mode === "library" && (s.role === "CONTROLS" || s.role === "PROCEDURE_MAP")) || (mode === "controls" && ["CITATIONS", "SOURCE_LIST", "SOURCE_METADATA"].includes(s.role))) issues.push({ severity: "INFO", code: "SHEET_NOT_IMPORTED", sheet: s.name, message: mode === "library" ? "Worksheet is not used by the library import." : "Worksheet is not used by the custom control import." });
   }
   if (issues.some((i) => i.severity === "ERROR")) return { dataset: ds, issues, sheets, counts: {} };
 
@@ -291,7 +291,7 @@ export function normaliseSourceIdWorkbook(wb: ParsedWorkbook, mode: "library" | 
     if (selSheet)
       issues.push({
         severity: "INFO", code: "CONTROL_REGISTER", sheet: ctlSheet_.name,
-        message: `All ${ds.controls.length} controls on “${ctlSheet_.name}” are imported and in scope; the ${selection.size} listed on “${selSheet.name}” are marked as the client's selection. The client can change the scope on Custom Control Mapping.`,
+        message: `All ${ds.controls.length} controls on “${ctlSheet_.name}” are imported and in scope; the ${selection.size} listed on “${selSheet.name}” are marked as the selected custom controls. You can change the scope on Custom Control Mapping.`,
       });
     if (outside.size)
       issues.push({

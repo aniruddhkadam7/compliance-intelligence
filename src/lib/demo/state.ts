@@ -3,9 +3,9 @@
 //   Sources           four framework updates are offered (NIST CSF, CIS Controls, ISO/IEC 27001, ISO/IEC 27002).
 //                     Until one is applied the platform shows only the previous version; Update installs the newer
 //                     one, Reject leaves the update offered.
-//   Client controls   controls uploaded before an update keep pointing to the previous version until their mapping
+//   Custom controls   controls uploaded before an update keep pointing to the previous version until their mapping
 //                     is approved in Change Analytics; controls uploaded after it point straight to the new version.
-//   Rollback          returns to the demo-ready state: no update applied, nothing approved, no client controls.
+//   Rollback          returns to the demo-ready state: no update applied, nothing approved, no custom controls.
 //
 // Both versions of each framework stay in the library; which one a page shows is decided here.
 import { prisma } from "@/lib/db";
@@ -37,7 +37,7 @@ export const DEMO_KEYS = DEMO_UPDATES.map((u) => u.key) as [DemoKey, ...DemoKey[
 export type UpdateStatus = "AVAILABLE" | "UPDATED" | "REJECTED";
 export interface DemoState {
   updates: Partial<Record<DemoKey, { status: UpdateStatus; at: string }>>;
-  /** Per update: the client's controls were uploaded after it was applied, so they map straight to the new version. */
+  /** Per update: the custom controls were uploaded after it was applied, so they map straight to the new version. */
   uploadedAfter: Partial<Record<DemoKey, boolean>>;
   /** Per update: controls whose mapping to the new version was approved in Change Analytics. */
   approved: Partial<Record<DemoKey, string[]>>;
@@ -114,7 +114,7 @@ export async function reconsiderControls(key: DemoKey, controls: string[]) {
   await save(s);
 }
 
-/** Called when the client's controls are (re)uploaded: they point to whichever version each framework is on now. */
+/** Called when the custom controls are (re)uploaded: they point to whichever version each framework is on now. */
 export async function recordControlUpload() {
   const s = await getDemoState();
   s.uploadedAfter = Object.fromEntries(DEMO_KEYS.map((k) => [k, statusOf(s, k) === "UPDATED"]));
@@ -124,7 +124,7 @@ export async function recordControlUpload() {
 }
 
 /**
- * Back to the demo-ready state: every update offered again, nothing approved, client controls removed, and the connectors
+ * Back to the demo-ready state: every update offered again, nothing approved, custom controls removed, and the connectors
  * that watch a demo framework back on its previous version (NIST CSF 1.1, EU AI Act 2024) with their findings cleared.
  */
 export async function rollback(actor: string, role: string) {
@@ -188,7 +188,7 @@ export async function uninstalledVersions() {
 }
 
 /**
- * Which framework version each client control points to. `hidden` holds the documents a control must not show;
+ * Which framework version each custom control points to. `hidden` holds the documents a control must not show;
  * `highlight` marks the documents of an applied update: "pending" (previous version, approval outstanding) and
  * "updated" (new version, approved).
  */

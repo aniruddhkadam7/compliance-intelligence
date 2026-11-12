@@ -19,7 +19,7 @@ const plural = (n: number, noun: string) => `${formatNumber(n)} ${noun}${n === 1
 
 const OPTIONS: { scope: Scope; title: string; detail: (c: Counts) => string; note: string }[] = [
   {
-    scope: "controls", title: "Client controls and mappings",
+    scope: "controls", title: "Custom controls and mappings",
     detail: (c) => `${plural(c.controls, "control")}, plus their test procedures, evidence and mappings`,
     note: "The authoritative document library is kept. Control pages stay empty until controls are uploaded again.",
   },

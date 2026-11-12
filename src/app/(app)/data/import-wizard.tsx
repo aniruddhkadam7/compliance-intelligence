@@ -1,9 +1,9 @@
 "use client";
-// Client control import: Upload → Validate → Review → Confirm Import.
+// Custom control import: Upload → Validate → Review → Confirm Import.
 //   Upload and Validate   the file is sent to the server and analysed. Nothing in the platform changes; only an import
 //                         record in status "Validated" is kept, so the attempt shows in Import history.
-//   Review                what the server found, per worksheet: imported, only checked, skipped (and why), blocked
-//                         (missing or unreadable columns), with the records the file holds.
+//   Review                one status for the file (ready, already imported, or the blocking errors to fix) and what it
+//                         holds. Per-worksheet detail and warnings are not shown here (team feedback: keep it simple).
 //   Confirm Import        the database import, in one transaction. The result shows the records counted back from the
 //                         database after the write, or why the import was rejected (nothing written).
 import Link from "next/link";
@@ -12,13 +12,11 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  AlertTriangle, ArrowRight, Check, CheckCircle2, ChevronDown, CircleSlash, Database, FileSearch, FileSpreadsheet, Info, ListChecks, Loader2, RotateCcw, UploadCloud, XCircle,
+  AlertTriangle, ArrowRight, Check, CheckCircle2, Database, FileSearch, FileSpreadsheet, Info, Loader2, RotateCcw, UploadCloud, XCircle,
 } from "lucide-react";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/sheet";
-import { SectionTitle } from "@/components/common";
 import { apiSend } from "@/lib/client/api";
 import { cn, formatDateTime, formatNumber } from "@/lib/utils";
 import { ISSUE_LABELS } from "@/lib/labels";
@@ -50,12 +48,6 @@ const COUNT_LABEL: Record<string, string> = {
   librarySections: "Library sections (obligations)", documentsRenumbered: "Documents renumbered", documentsAdded: "New documents", frameworks: "Library documents written",
   sectionsWritten: "Library sections written", sectionsAdded: "Library sections added", sectionsUpdated: "Library sections updated", replacedControls: "Previous controls replaced",
   citations: "Obligations", requirements: "Mapping groups", reviews: "Unmapped review rows", frameworkReferences: "Framework references", rows: "Rows",
-};
-const STATUS: Record<SheetStatus, { label: string; tone: "success" | "info" | "outline" | "danger"; icon: typeof Check }> = {
-  IMPORTED: { label: "Imported", tone: "success", icon: CheckCircle2 },
-  CHECKED: { label: "Checked only", tone: "info", icon: ListChecks },
-  SKIPPED: { label: "Skipped", tone: "outline", icon: CircleSlash },
-  BLOCKED: { label: "Blocked", tone: "danger", icon: XCircle },
 };
 const STEPS = ["Upload", "Validate", "Review", "Confirm import"] as const;
 
@@ -112,8 +104,6 @@ export function ImportWizard() {
   const [busy, setBusy] = useState<"preview" | "confirm" | null>(null);
   const [drag, setDrag] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [sheet, setSheet] = useState<string | null>(null);
-  const [showNotes, setShowNotes] = useState(false);
 
   async function validate(f: File) {
     setFile(f);
@@ -127,7 +117,6 @@ export function ImportWizard() {
     try {
       const p = await apiSend<Preview>("/api/import/preview", fd);
       setPreview(p);
-      setSheet(p.report.sheets.find((s) => s.status === "BLOCKED")?.name ?? p.report.sheets.find((s) => s.status === "IMPORTED")?.name ?? null);
     } catch (e) {
       setUploadError(e instanceof Error ? e.message : "The file could not be validated.");
     } finally {
@@ -169,10 +158,6 @@ export function ImportWizard() {
 
   const report = preview?.report;
   const blocking = preview?.issues.filter((i) => i.severity === "ERROR") ?? [];
-  const warnings = preview?.issues.filter((i) => i.severity === "WARNING") ?? [];
-  // Worksheet skips are in the worksheet table; the rest are notes on what was read.
-  const notes = preview?.issues.filter((i) => i.severity === "INFO" && i.code !== "SHEET_NOT_IMPORTED") ?? [];
-  const selected = preview?.sheets.find((s) => s.name === sheet);
   const step = result ? 4 : busy === "confirm" ? 3 : preview ? 2 : busy === "preview" ? 1 : 0;
   // Upload/validation could not run → Validate; blocking errors → Review; rejected by the import → Confirm import.
   const failedAt = uploadError ? 1 : result?.status === "FAILED" ? 3 : report?.outcome === "ACTION_NEEDED" ? 2 : null;
@@ -182,7 +167,7 @@ export function ImportWizard() {
     <div className="space-y-4">
       <Card>
         <CardHeader
-          title="Import client controls"
+          title="Import custom controls"
           description="Uploading validates the file only: nothing in the platform changes until you select Confirm import."
           actions={<ClientControlActions empty={false} showUpload={false} />}
         />
@@ -216,23 +201,25 @@ export function ImportWizard() {
 
       {preview && report && !result && (
         <>
-          {/* Validation outcome: one clear status for the whole file. */}
+          {/* One status for the whole file; the detail of what was read is kept out of the way. */}
           <div className={cn("flex flex-wrap items-start gap-3 rounded-lg border px-4 py-3",
             preview.alreadyImported ? "border-success/30 bg-success-soft" : report.outcome === "READY" ? "border-info/30 bg-info-soft" : "border-danger/30 bg-danger-soft")}>
             {preview.alreadyImported ? <CheckCircle2 className="mt-0.5 size-5 text-success" /> : report.outcome === "READY" ? <FileSearch className="mt-0.5 size-5 text-info" /> : <XCircle className="mt-0.5 size-5 text-danger" />}
             <div className="min-w-0 flex-1 text-[13px]">
               <div className="font-semibold text-fg">
                 {preview.alreadyImported ? "Import complete: this file is already in the platform"
-                  : report.outcome === "READY" ? "Validation passed: ready to import" : `Action needed: ${report.errors} blocking error${report.errors === 1 ? "" : "s"}`}
+                  : report.outcome === "READY" ? "Ready to import" : "Action needed: the file cannot be imported"}
               </div>
               <div className="mt-0.5 text-fg-2">
-                <FileSpreadsheet className="mr-1 inline size-3.5 align-[-2px] text-muted" />{preview.fileName} · {(preview.fileSize / 1024 / 1024).toFixed(2)} MB · uploaded {formatDateTime(preview.uploadedAt)}
+                <FileSpreadsheet className="mr-1 inline size-3.5 align-[-2px] text-muted" />{preview.fileName} · uploaded {formatDateTime(preview.uploadedAt)}
               </div>
-              <div className="mt-0.5 text-xs text-muted">
-                {preview.alreadyImported
-                  ? `Imported ${formatDateTime(preview.alreadyImported.completedAt)} by ${preview.alreadyImported.actor}: ${formatNumber(preview.alreadyImported.counts.controls ?? 0)} controls are in the platform from this file.`
-                  : report.outcome === "READY" ? "Validated, not imported. Review the worksheets below, then confirm the import." : "Validated, not imported. Fix the workbook and upload it again; the blocked worksheets and columns are listed below."}
-              </div>
+              {preview.alreadyImported && <div className="mt-0.5 text-xs text-muted">Imported {formatDateTime(preview.alreadyImported.completedAt)} by {preview.alreadyImported.actor}.</div>}
+              {report.outcome !== "READY" && (
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-xs text-danger">
+                  {blocking.slice(0, 5).map((i, n) => <li key={n}>{i.message}{i.sheet ? ` (${i.sheet}${i.row ? `, row ${i.row}` : ""})` : ""}</li>)}
+                  {blocking.length > 5 && <li className="list-none text-muted">and {blocking.length - 5} more. Fix the workbook and upload it again.</li>}
+                </ul>
+              )}
             </div>
             <Button size="sm" variant="ghost" onClick={reset} disabled={!!busy}><RotateCcw /> Choose another file</Button>
           </div>
@@ -243,119 +230,31 @@ export function ImportWizard() {
             </div>
           )}
 
-          {/* Processing summary: what the server read, from the file itself. */}
-          <Card>
-            <CardHeader title="Processing summary" description="What validation read from this file. Records are written only by Confirm import." />
-            <div className="grid grid-cols-2 gap-px border-t border-border bg-border sm:grid-cols-3 xl:grid-cols-6">
-              <Tile label="Worksheets" value={report.summary.worksheets} sub={`${report.summary.imported} imported · ${report.summary.checked} checked · ${report.summary.skipped} skipped${report.summary.blocked ? ` · ${report.summary.blocked} blocked` : ""}`} />
-              <Tile label="Rows read" value={formatNumber(report.summary.rows)} sub="In imported and checked sheets" />
-              <Tile label="Headers recognised" value={formatNumber(report.summary.headers)} sub="Columns in sheets that were read" />
-              <Tile label="Controls" value={formatNumber(preview.counts.controls ?? 0)} sub={`${formatNumber(preview.counts.testProcedures ?? 0)} test procedures`} />
-              <Tile label="Framework relationships" value={formatNumber(relationships)} sub={preview.counts.versionTransitions ? `${formatNumber(preview.counts.versionTransitions)} version transitions` : "Cross-framework section pairs"} />
-              <Tile label="Validation" value={<span className={report.errors ? "text-danger" : "text-success"}>{report.errors ? `${report.errors} errors` : "Passed"}</span>} sub={`${report.warnings} warning${report.warnings === 1 ? "" : "s"}`} />
-            </div>
-          </Card>
-
-          <div className="grid gap-4 xl:grid-cols-3">
-            <Card className="xl:col-span-2">
-              <CardHeader title="Worksheets" description="Each worksheet's outcome. Select a worksheet that was read to preview its first rows." />
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-border bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                      <th className="px-4 py-2">Worksheet</th><th className="px-3 py-2">Outcome</th><th className="px-3 py-2 text-right">Header row</th><th className="px-3 py-2 text-right">Columns</th><th className="px-3 py-2 text-right">Rows</th><th className="px-4 py-2">Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {report.sheets.map((s) => {
-                      const st = STATUS[s.status];
-                      const readable = s.status !== "SKIPPED";
-                      return (
-                        <tr key={s.name} onClick={() => readable && setSheet(s.name)} className={cn("border-b border-border align-top last:border-0", readable && "cursor-pointer hover:bg-surface-2", sheet === s.name && "bg-accent-soft/50")}>
-                          <td className="px-4 py-2">
-                            <div className={cn("font-medium", readable ? "text-fg" : "text-fg-2")}>{s.name}</div>
-                            <div className="text-[11px] text-muted">{s.roleLabel}</div>
-                          </td>
-                          <td className="px-3 py-2"><Badge tone={st.tone} className="gap-1 whitespace-nowrap"><st.icon className="size-3" />{st.label}</Badge></td>
-                          <td className="px-3 py-2 text-right tabular text-fg-2">{s.headerRow ?? "—"}</td>
-                          <td className="px-3 py-2 text-right tabular text-fg-2">{s.headers}</td>
-                          <td className="px-3 py-2 text-right tabular text-fg-2">{formatNumber(s.rows)}</td>
-                          <td className="max-w-[360px] px-4 py-2 text-xs">
-                            {s.missingColumns.length > 0 && <div className="text-danger"><b>Missing column{s.missingColumns.length > 1 ? "s" : ""}:</b> {s.missingColumns.map((c) => `“${c}”`).join(", ")}</div>}
-                            {s.columnProblems.map((p) => (
-                              <div key={p.column} className={p.severity === "ERROR" ? "text-danger" : "text-warning"}>
-                                <b>“{p.column}”</b>{p.rows ? `: ${formatNumber(p.rows)} row${p.rows === 1 ? "" : "s"} unreadable` : ""}. <span className="text-fg-2">{p.message}</span>
-                              </div>
-                            ))}
-                            {s.reason && !s.missingColumns.length && <div className={s.status === "BLOCKED" ? "text-danger" : "text-muted"}>{s.reason}</div>}
-                            {!s.reason && !s.missingColumns.length && !s.columnProblems.length && <span className="text-muted">All required columns found</span>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+          {report.outcome === "READY" && (
+            <Card>
+              <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">
+                <Tile label="Worksheets read" value={report.summary.imported + report.summary.checked} sub={`of ${report.summary.worksheets} in the file`} />
+                <Tile label="Custom controls" value={formatNumber(preview.counts.controls ?? 0)} />
+                <Tile label="Test procedures" value={formatNumber(preview.counts.testProcedures ?? 0)} />
+                <Tile label="Framework relationships" value={formatNumber(relationships)} />
               </div>
-              {selected && (
-                <div className="border-t border-border p-4">
-                  <SectionTitle>First rows · {selected.name}</SectionTitle>
-                  <div className="scrollbar-thin overflow-x-auto rounded-md border border-border">
-                    <table className="text-left text-xs">
-                      <thead><tr className="bg-surface-2">{selected.headers.slice(0, 14).map((h) => <th key={h} className="max-w-[220px] whitespace-nowrap border-b border-border px-2.5 py-1.5 font-semibold text-fg-2">{h.replace(/\n/g, " ").slice(0, 40)}</th>)}</tr></thead>
-                      <tbody>
-                        {selected.preview.map((r, i) => (
-                          <tr key={i} className="border-b border-border last:border-0">
-                            {selected.headers.slice(0, 14).map((h) => <td key={h} className="max-w-[220px] truncate px-2.5 py-1.5 text-fg-2">{r[h] ?? <span className="text-subtle">·</span>}</td>)}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {selected.headers.length > 14 && <p className="mt-1.5 text-[11px] text-muted">Showing 14 of {selected.headers.length} columns. All columns are kept on import.</p>}
-                </div>
-              )}
-            </Card>
-
-            <div className="space-y-4">
-              <Card>
-                <CardHeader title="Confirm import" description={preview.alreadyImported ? undefined : "Writes the records below to the database in one step. The previous mapping is kept in Import history."} />
-                <CardBody className="space-y-3">
-                  {preview.alreadyImported ? (
-                    <>
-                      <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success-soft px-3 py-2 text-[13px] font-medium text-success"><CheckCircle2 className="size-4" /> Imported {formatDateTime(preview.alreadyImported.completedAt)}</div>
-                      <Button asChild variant="primary" className="w-full"><Link href="/controls">Open Custom Control Mapping <ArrowRight /></Link></Button>
-                      <Button size="sm" variant="ghost" className="w-full" disabled={!!busy || report.outcome !== "READY"} onClick={() => setConfirmOpen(true)}><RotateCcw /> Import this file again</Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button variant="primary" size="lg" className="w-full" disabled={!!busy || report.outcome !== "READY"} onClick={() => setConfirmOpen(true)}>
-                        {busy === "confirm" ? <><Loader2 className="animate-spin" /> Importing…</> : <><Database /> Confirm import</>}
-                      </Button>
-                      {report.outcome !== "READY" && <p className="text-center text-xs text-danger">Fix the blocking errors in the workbook and upload it again.</p>}
-                    </>
-                  )}
-                  <div>
-                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">In this file</div>
-                    <CountList counts={preview.counts} />
-                  </div>
-                </CardBody>
-              </Card>
-              <Card>
-                <CardHeader title="Findings" actions={<div className="flex gap-1"><Badge tone={blocking.length ? "danger" : "success"}>{blocking.length} errors</Badge><Badge tone={warnings.length ? "warning" : "neutral"}>{warnings.length} warnings</Badge></div>} />
-                {!blocking.length && !warnings.length && <p className="px-4 pb-3 text-xs text-muted">No errors or warnings. Skipped worksheets and their reasons are listed in the worksheet table.</p>}
-                <ul className="max-h-[320px] divide-y divide-border overflow-y-auto">
-                  {[...blocking, ...warnings].slice(0, 60).map((i, n) => <IssueRow key={n} i={i} />)}
-                </ul>
-                {blocking.length + warnings.length > 60 && <p className="border-t border-border px-4 py-2 text-[11px] text-muted">{blocking.length + warnings.length - 60} more in Data quality after import.</p>}
-                {notes.length > 0 && (
-                  <div className="border-t border-border">
-                    <button onClick={() => setShowNotes((v) => !v)} className="flex w-full items-center gap-1.5 px-4 py-2 text-xs text-muted hover:text-fg"><ChevronDown className={cn("size-3.5 transition-transform", showNotes && "rotate-180")} /> {notes.length} note{notes.length === 1 ? "" : "s"} on what was read</button>
-                    {showNotes && <ul className="divide-y divide-border border-t border-border">{notes.map((i, n) => <IssueRow key={n} i={i} />)}</ul>}
-                  </div>
+              <CardBody className="flex flex-wrap items-center gap-3 border-t border-border">
+                {preview.alreadyImported ? (
+                  <>
+                    <Button asChild variant="primary"><Link href="/controls">Open Custom Control Mapping <ArrowRight /></Link></Button>
+                    <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => setConfirmOpen(true)}><RotateCcw /> Import this file again</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="primary" size="lg" disabled={!!busy} onClick={() => setConfirmOpen(true)}>
+                      {busy === "confirm" ? <><Loader2 className="animate-spin" /> Importing…</> : <><Database /> Confirm import</>}
+                    </Button>
+                    <span className="text-xs text-muted">Nothing has been imported yet. Confirm import writes the file to the platform.</span>
+                  </>
                 )}
-              </Card>
-            </div>
-          </div>
+              </CardBody>
+            </Card>
+          )}
         </>
       )}
 
@@ -364,8 +263,8 @@ export function ImportWizard() {
         onOpenChange={setConfirmOpen}
         title={preview?.alreadyImported ? "Import this file again?" : "Confirm import?"}
         description={preview?.counts.libraryDocuments !== undefined
-          ? "This workbook also carries the document library and framework relationships. The library is updated first (documents matched by name; renumbered Source IDs are re-keyed, nothing is deleted), the framework relationships in the file replace the current ones, then the client's controls and mappings are replaced. The previous mapping is recorded in Import history. Approved mapping decisions in Change Analytics are reset for the new upload."
-          : "The client's current controls and mappings are replaced by this file. The previous mapping is recorded in Import history; the global document library is not affected."}
+          ? "This workbook also carries the document library and framework relationships. The library is updated first (documents matched by name; renumbered Source IDs are re-keyed, nothing is deleted), the framework relationships in the file replace the current ones, then the custom controls and mappings are replaced. The previous mapping is recorded in Import history. Approved mapping decisions in Change Analytics are reset for the new upload."
+          : "The current custom controls and mappings are replaced by this file. The previous mapping is recorded in Import history; the global document library is not affected."}
         footer={<><Button onClick={() => setConfirmOpen(false)}>Cancel</Button><Button variant="primary" onClick={confirm}><Database /> Import {file?.name}</Button></>}
       />
     </div>

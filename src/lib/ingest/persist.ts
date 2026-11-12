@@ -13,7 +13,7 @@ import { buildImportReport, type ImportReport } from "./report";
 /**
  * Three independent import paths:
  *   LIBRARY          global document library (frameworks + obligations). Upserted; never deletes, so client mappings survive.
- *   CLIENT_CONTROLS  one client's controls, test procedures and Source ID links. Replaces only that client's data.
+ *   CLIENT_CONTROLS  one custom controls, test procedures and Source ID links. Replaces only that client's data.
  *                    A workbook that also carries the document library ("Citation Sources") and relationship sheets is
  *                    read in full: library synced first (documents matched by name, renumbered IDs re-keyed), then
  *                    relationships, then controls, so every Source ID resolves to the document the file means.
@@ -96,7 +96,7 @@ async function writeRelationships(tx: Prisma.TransactionClient, rows: Relationsh
     tx.sourceRelationship.createMany({ data: b.map((x) => ({ ...x, raw: json(x.raw), importJobId: jobId })) }));
 }
 
-/** Replaces the client's controls, procedures, links and evidence. */
+/** Replaces the custom controls, procedures, links and evidence. */
 async function writeControls(tx: Prisma.TransactionClient, ds: NormalisedDataset, jobId: string) {
   const client = await tx.client.upsert({ where: { name: DEFAULT_CLIENT }, create: { name: DEFAULT_CLIENT }, update: {} });
   // Keep the mapping being replaced so the previous approved mapping stays traceable.
@@ -110,7 +110,7 @@ async function writeControls(tx: Prisma.TransactionClient, ds: NormalisedDataset
     where: { id: jobId },
     data: { clientId: client.id, previousMapping: json(previous.map((p) => ({ control: p.controlName, obligations: p.obligations.map((o) => o.citation.sourceSectionId) }))) },
   });
-  // Replace this client's controls (cascades to procedures, links, evidence and pending proposals).
+  // Replace this custom controls (cascades to procedures, links, evidence and pending proposals).
   await tx.ccfControl.deleteMany({ where: { OR: [{ clientId: client.id }, { clientId: null }] } });
   await chunked(ds.controls, 200, (b) =>
     tx.ccfControl.createMany({ data: b.map((c) => ({ ...c, inScope: scope.get(String(c.controlName)) ?? c.inScope ?? true, clientId: client.id, raw: json(c.raw), workingRaw: undefined, importJobId: jobId })) as Prisma.CcfControlCreateManyInput[] }));

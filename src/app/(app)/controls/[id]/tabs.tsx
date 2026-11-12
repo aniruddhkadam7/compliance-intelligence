@@ -162,7 +162,7 @@ function ClientControl({ c }: { c: ControlDetail }) {
   return (
     <>
       <div className="rounded-md border border-border-strong bg-surface px-3 py-2">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Client control</div>
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Custom control</div>
         <div className="text-sm font-semibold text-fg"><span className="font-mono">{c.controlName}</span>{c.title ? ` — ${c.title}` : ""}</div>
       </div>
       <div className="space-y-3 border-l-2 border-border pl-4">
@@ -187,7 +187,7 @@ function ClientControl({ c }: { c: ControlDetail }) {
           </section>
         )}
       </div>
-      {hasDemo && <p className="text-[11px] text-muted">Obligations marked “Illustrative” are demonstration links, not recorded client mappings, and need validation.</p>}
+      {hasDemo && <p className="text-[11px] text-muted">Obligations marked “Illustrative” are demonstration links, not recorded custom control mappings, and need validation.</p>}
     </>
   );
 }

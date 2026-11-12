@@ -105,11 +105,11 @@ export function ControlRegister() {
   if (list.data && list.data.total === 0 && !active)
     return (
       <Page>
-        <PageHeader title={TERMS.clientControls} description="The client's internal controls and the regulatory obligations each one is mapped to." />
+        <PageHeader title={TERMS.clientControls} description="Your custom controls and the regulatory obligations each one is mapped to." />
         <Card>
           <EmptyState
             icon={FileSpreadsheet}
-            title="No client control data imported"
+            title="No custom control data imported"
             description={
               <>
                 Upload the client&apos;s controls under {TERMS.data} using the Excel template (Client Control ID, Control Name, Control Description,
@@ -127,7 +127,7 @@ export function ControlRegister() {
     <Page>
       <PageHeader
         title={TERMS.clientControls}
-        description="The client's internal controls and the regulatory obligations each one is mapped to."
+        description="Your custom controls and the regulatory obligations each one is mapped to."
         meta={lastSync.data ? (
           <Badge tone="outline"><History /> Last sync {formatDateTime(lastSync.data.completedAt)} · {lastSync.data.fileName}</Badge>
         ) : null}
@@ -137,7 +137,7 @@ export function ControlRegister() {
           <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
             {open ? <BellRing className="size-4 text-warning" /> : <Check className="size-4 text-success" />}
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold text-fg">{open ? "Framework updates affect the client's controls" : "Client controls are on the latest framework versions"}</div>
+              <div className="text-[13px] font-semibold text-fg">{open ? "Framework updates affect the custom controls" : "Custom controls are on the latest framework versions"}</div>
               <div className="text-xs text-muted">
                 {pending ? `${formatNumber(pending)} control mapping(s) await approval in ${TERMS.versionImpact}; until then they stay on the previous version.${rejected ? ` ${formatNumber(rejected)} rejected.` : ""}` : open ? `Every control has been reviewed. ${formatNumber(rejected)} rejected control(s) stay on the previous version.` : "Every affected control's mapping has been approved."}
               </div>

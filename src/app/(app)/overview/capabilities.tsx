@@ -24,7 +24,7 @@ const STEPS: Step[] = [
 const CONNECTED: Step[] = [
   { icon: Network, title: "Framework relationships", sub: "See how frameworks map to each other", status: "now", href: "/mappings" },
   { icon: ShieldCheck, title: "Control mapping", sub: "Your controls linked to requirements, from the manually prepared mapping workbook", status: "now", href: "/controls" },
-  { icon: Gauge, title: "Gap visibility", sub: "Met, partly met and open classification", status: "planned" },
+  { icon: Gauge, title: "Control gaps", sub: "Met, partly met and open classification of your controls", status: "planned" },
 ];
 
 function StatusTag({ status }: { status: Availability }) {

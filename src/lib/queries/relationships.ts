@@ -81,7 +81,7 @@ export async function listRelationships(f: z.infer<typeof RelationshipFilters>) 
   };
 }
 
-/** Client controls mapped to legacy sections that change in the given transition pair. */
+/** Custom controls mapped to legacy sections that change in the given transition pair. */
 export async function clientImpact(from: string, to: string) {
   const client = await prisma.client.findUnique({ where: { name: DEFAULT_CLIENT } });
   const controlCount = await prisma.ccfControl.count();

@@ -84,7 +84,7 @@ const APPROVE_STEPS = (d: Detail, names: string[]): ProgressStep[] => {
 
 /**
  * Change Analytics: for a framework update (NIST CSF, CIS Controls, ISO/IEC 27001, ISO/IEC 27002), which client test
- * procedures map to different sections in the updated version, which client controls are affected, and approval of
+ * procedures map to different sections in the updated version, which custom controls are affected, and approval of
  * their move to the new version once the update is applied in Sources.
  */
 export function ChangeAnalytics() {
@@ -98,15 +98,19 @@ export function ChangeAnalytics() {
 
   return (
     <Page>
-      <PageHeader title={TERMS.versionImpact} description="What changed between a framework's previous version and its updated version, which client controls are affected, and approval of their mapping to the new version." />
+      <PageHeader
+        title={TERMS.versionImpact}
+        description="What changed between a framework's previous version and its updated version, which custom controls are affected, and approval of their mapping to the new version."
+        actions={<Button asChild size="sm"><Link href="/controls">Open {TERMS.clientControls} <ArrowRight /></Link></Button>}
+      />
       {list.isLoading && <Skeleton className="h-60" />}
       {!!list.error && <Card><ErrorState error={list.error} onRetry={list.refetch} /></Card>}
       {list.data && !list.data.controlsUploaded && (
         <Card>
           <EmptyState
             icon={FileSpreadsheet}
-            title="No client controls uploaded"
-            description="Change Analytics shows how framework updates affect the client's controls. Upload the client's control workbook to begin."
+            title="No custom controls uploaded"
+            description="Change Analytics shows how framework updates affect the custom controls. Upload the custom control workbook to begin."
             action={<Button asChild variant="primary"><Link href="/data?tab=import"><Upload /> Go to {TERMS.data}</Link></Button>}
           />
         </Card>
@@ -116,7 +120,7 @@ export function ChangeAnalytics() {
           <EmptyState
             icon={GitCompareArrows}
             title="No framework updates applied yet"
-            description="Once a framework update is applied in Sources, the client controls it affects are listed here for approval."
+            description="Once a framework update is applied in Sources, the custom controls it affects are listed here for approval."
             action={<Button asChild variant="primary"><Link href="/sources">Go to {TERMS.sources} <ArrowRight /></Link></Button>}
           />
         </Card>
@@ -155,7 +159,12 @@ function useApprove(d: Detail) {
     try {
       await progress.run(`Approving ${names.length === 1 ? names[0] : `${names.length} controls`}`, APPROVE_STEPS(d, names), () => apiSend("/api/demo", { action: "approve", key: d.key, controls: names }),
         names.length > 14 ? [...names.slice(0, 13), `+${names.length - 13} more`] : names);
-      toast.success(`${names.length === 1 ? names[0] : `${names.length} controls`} mapped to ${d.family} ${d.current}`);
+      // An approved control is on the new version everywhere: offer its page (traceability) or the control register.
+      toast.success(`${names.length === 1 ? names[0] : `${names.length} controls`} mapped to ${d.family} ${d.current}`, {
+        action: names.length === 1
+          ? { label: "Open control", onClick: () => router.push(`/controls/${encodeURIComponent(names[0])}`) }
+          : { label: `Open ${TERMS.clientControls}`, onClick: () => router.push("/controls") },
+      });
       await refreshEverywhere();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Approval failed");
@@ -187,16 +196,17 @@ function FlowBanner({ d, onApproveAll, running }: { d: Detail; onApproveAll: () 
   );
   if (d.status === "AVAILABLE")
     return box("warning", <BellRing className="size-4 text-warning" />,
-      <><b>Update available: {d.family} {d.current}.</b> The client&apos;s controls stay on {d.previous} until the update is applied in Sources; their mappings can then be approved here.</>,
+      <><b>Update available: {d.family} {d.current}.</b> The custom controls stay on {d.previous} until the update is applied in Sources; their mappings can then be approved here.</>,
       <Button asChild size="sm" variant="primary"><Link href="/sources?status=AVAILABLE">Go to Sources <ArrowRight /></Link></Button>);
   if (d.status === "REJECTED")
-    return box("neutral", <X className="size-4 text-muted" />, <><b>Update rejected in Sources.</b> The client&apos;s controls stay on {d.family} {d.previous}.</>);
+    return box("neutral", <X className="size-4 text-muted" />, <><b>Update rejected in Sources.</b> The custom controls stay on {d.family} {d.previous}.</>);
   if (d.uploadedAfter)
     return box("success", <CheckCircle2 className="size-4 text-success" />, <><b>Controls map to {d.family} {d.current}.</b> They were uploaded after the update was applied, so there is nothing to approve.</>);
   if (!pending && d.rejected.length)
     return box("warning", <CheckCircle2 className="size-4 text-warning" />, <><b>All {formatNumber(d.affectedControls)} affected controls reviewed.</b> {formatNumber(d.approved.length)} approved and now on {d.family} {d.current}; {formatNumber(d.rejected.length)} rejected and kept on {d.previous}. A rejected control can be reconsidered at any time.</>);
   if (!pending)
-    return box("success", <CheckCircle2 className="size-4 text-success" />, <><b>All {formatNumber(d.affectedControls)} affected controls approved.</b> They now point to {d.family} {d.current}.</>);
+    return box("success", <CheckCircle2 className="size-4 text-success" />, <><b>All {formatNumber(d.affectedControls)} affected controls approved.</b> They now point to {d.family} {d.current}.</>,
+      <Button asChild size="sm" variant="primary"><Link href="/controls">Open {TERMS.clientControls} <ArrowRight /></Link></Button>);
   return box("warning", <BellRing className="size-4 text-warning" />,
     <><b>{formatNumber(pending)} of {formatNumber(d.affectedControls)} affected controls await approval.</b> Approved controls move to {d.family} {d.current}; the rest stay on {d.previous}.{d.rejected.length ? ` ${formatNumber(d.rejected.length)} rejected.` : ""}</>,
     canWrite && <Button size="sm" variant="primary" disabled={running} onClick={onApproveAll}><Check /> Approve all ({formatNumber(pending)})</Button>);
@@ -274,15 +284,15 @@ function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: s
             </div>
           </div>
           <button type="button" onClick={() => go({ tab: "controls", status: "" })} title="Show the affected controls" className={TAP}>
-            <div className={cn("text-2xl font-semibold tabular", d.affectedControls ? "text-warning" : "text-fg")}>{d.affectedControls}</div><div className="text-[11px] text-muted">Affected client controls</div>
+            <div className={cn("text-2xl font-semibold tabular", d.affectedControls ? "text-warning" : "text-fg")}>{d.affectedControls}</div><div className="text-[11px] text-muted">Affected custom controls</div>
           </button>
           {approving(d) && (
             <button type="button" onClick={() => go({ tab: "controls", status: "approved" })} title="Show the approved controls" className={TAP}>
               <div className="text-2xl font-semibold tabular text-success">{d.approved.length}</div><div className="text-[11px] text-muted">Approved</div>
             </button>
           )}
-          <Link href="/controls" title={`Open all client controls in ${TERMS.clientControls}`} className={TAP}>
-            <div className="text-2xl font-semibold tabular text-fg">{d.totalControls}</div><div className="text-[11px] text-muted">Total client controls</div>
+          <Link href="/controls" title={`Open all custom controls in ${TERMS.clientControls}`} className={TAP}>
+            <div className="text-2xl font-semibold tabular text-fg">{d.totalControls}</div><div className="text-[11px] text-muted">Total custom controls</div>
           </Link>
         </CardBody>
       </Card>
@@ -292,7 +302,7 @@ function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: s
       <StatStrip
         className="xl:grid-cols-5"
         items={[
-          { label: "Affected controls", value: d.affectedControls, tone: d.affectedControls ? "warning" : "default", sub: `of ${formatNumber(d.totalControls)} client controls`, onClick: () => go({ tab: "controls" }), active: tab === "controls" },
+          { label: "Affected controls", value: d.affectedControls, tone: d.affectedControls ? "warning" : "default", sub: `of ${formatNumber(d.totalControls)} custom controls`, onClick: () => go({ tab: "controls" }), active: tab === "controls" },
           { label: "Test procedures changed", value: full.changedTestProcedures, tone: full.changedTestProcedures ? "warning" : "default", sub: `of ${formatNumber(d.totalTestProcedures)}`, onClick: () => go({ tab: "procedures" }), active: tab === "procedures" },
           { label: "Test procedures unchanged", value: d.totalTestProcedures - full.changedTestProcedures, tone: "success", sub: "Same sections in both versions · see Analytics", onClick: () => go({ tab: "analytics" }), active: tab === "analytics" },
           { label: "Sections removed from mappings", value: d.removedSections, hint: "Distinct sections of the previous version that changed test procedures no longer map to", onClick: () => go({ tab: "removed" }), active: tab === "removed" },
@@ -433,7 +443,7 @@ function AffectedControls({ d, selected, set, approve, reject, reconsider, runni
   if (!d.controls.length)
     return filtered
       ? <Card><EmptyState icon={Search} title="No controls match" description="Change or clear the filters." /></Card>
-      : <Card><EmptyState icon={ListChecks} title="No client controls are affected" description="No client test procedure maps to different sections in this version." /></Card>;
+      : <Card><EmptyState icon={ListChecks} title="No custom controls are affected" description="No custom test procedure maps to different sections in this version." /></Card>;
   const disabledWhy = d.status !== "UPDATED" ? "Apply the update in Sources first" : d.uploadedAfter ? "Already mapped to the new version" : !canWrite ? "Your role cannot approve mappings" : undefined;
   return (
     <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
@@ -473,6 +483,7 @@ function AffectedControls({ d, selected, set, approve, reject, reconsider, runni
                 {mode && (ok ? (
                   <span className="flex flex-col items-end gap-1">
                     <Badge tone="success"><Check /> Approved</Badge>
+                    <Link href={`/controls/${encodeURIComponent(c.controlName)}`} title="Open this control: traceability, test procedures and mappings" className="inline-flex items-center gap-1 text-[11px] font-medium text-success hover:underline">Open control <ArrowRight className="size-3" /></Link>
                     <Button size="sm" variant="ghost" disabled={running} onClick={() => reconsider([c.controlName])}>Undo</Button>
                   </span>
                 ) : no ? (
@@ -502,7 +513,7 @@ function AffectedControls({ d, selected, set, approve, reject, reconsider, runni
               <span className="flex items-center gap-2">
                 <Badge tone="success"><Check /> Approved · {d.family} {d.current}</Badge>
                 <Button size="sm" variant="ghost" disabled={running || !!disabledWhy} title={disabledWhy ?? "Put this control back to awaiting approval"} onClick={() => reconsider([open.controlName])}>Undo</Button>
-                <Button asChild size="sm" variant="ghost"><Link href={`/controls/${encodeURIComponent(open.controlName)}`}>View control <ArrowRight /></Link></Button>
+                <Button asChild size="sm" variant="primary"><Link href={`/controls/${encodeURIComponent(open.controlName)}`}>Open control · Traceability <ArrowRight /></Link></Button>
               </span>
             ) : rejected.has(open.controlName) ? (
               <span className="flex items-center gap-2">
@@ -670,7 +681,7 @@ function Analytics({ d }: { d: Detail }) {
         </div>
       </Card>
       <Card>
-        <CardHeader title="Client impact" description="All client controls" />
+        <CardHeader title="Custom control impact" description="All custom controls" />
         <CardBody className="space-y-3 text-xs">
           <div className="flex h-3 overflow-hidden rounded-full bg-surface-2">
             <div style={{ width: `${(d.affectedControls / d.totalControls) * 100}%`, background: KIND.REMOVED.color }} />

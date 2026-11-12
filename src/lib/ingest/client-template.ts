@@ -1,4 +1,4 @@
-// Client control template: a simple workbook layout any client can fill in, its importer, and the ten
+// Custom control template: a simple workbook layout any client can fill in, its importer, and the ten
 // clearly labelled sample controls used for demonstrations. Section IDs are resolved against the library;
 // anything that does not resolve is reported, never guessed.
 import * as XLSX from "xlsx";
@@ -55,7 +55,7 @@ export function normaliseClientTemplate(wb: ParsedWorkbook, lookup: Map<string, 
       if (!obligations.has(k)) { obligations.add(k); ds.controlObligations.push({ id: id(), controlId, citationId, mappingType: tpId ? "PROCEDURE" : "PRIMARY" }); }
     }
   }
-  if (!ds.controls.length) issues.push({ severity: "ERROR", code: "NO_CONTROLS", sheet: sheetName, message: "No client controls were found in the template." });
+  if (!ds.controls.length) issues.push({ severity: "ERROR", code: "NO_CONTROLS", sheet: sheetName, message: "No custom controls were found in the template." });
   const sheets = summariseSheets(wb).map((s) => ({ ...s, role: (s.name === sheetName ? "CONTROLS" : s.role) as typeof s.role }));
   return { dataset: ds, issues, sheets, counts: { controls: ds.controls.length, testProcedures: ds.testProcedures.length, controlObligations: ds.controlObligations.length } };
 }
@@ -67,9 +67,9 @@ export function buildTemplate(rows: Row[] = [["EXAMPLE-01", "Access reviews", "U
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([[...TEMPLATE_HEADERS], ...rows]);
   ws["!cols"] = [16, 30, 50, 18, 50, 20, 26].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(wb, ws, "Client controls");
+  XLSX.utils.book_append_sheet(wb, ws, "Custom controls");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-    ["Client control template"],
+    ["Custom control template"],
     ["One row per test procedure. Repeat the control columns for each of its test procedures."],
     ["Source ID / Section ID: one or more Source IDs from the platform's document library, separated by commas or spaces (see Sources)."],
     ["Rows whose Client Control ID starts with EXAMPLE are ignored. Unknown Source IDs are reported in the import preview and not imported."],

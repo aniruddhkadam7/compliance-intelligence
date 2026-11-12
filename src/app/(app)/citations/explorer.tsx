@@ -46,7 +46,7 @@ export function CitationExplorer() {
     <Page>
       <PageHeader
         title={TERMS.obligations}
-        description="Every regulatory and legal requirement in the global document library, identified by its unique Source ID. Independent of any client data."
+        description="Every regulatory and legal requirement in the global document library, identified by its unique Source ID. Independent of any custom control data."
       />
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">

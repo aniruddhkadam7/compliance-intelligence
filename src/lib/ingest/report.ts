@@ -37,7 +37,7 @@ export interface ImportReport {
 
 export const ROLE_LABEL: Record<string, string> = {
   SOURCES: "Frameworks", CITATIONS: "Document library (obligations)", REQUIREMENTS: "Mapping groups", CONTROLS: "Control register",
-  CONTROLS_SELECTION: "Client selection", CONTROLS_WORKING: "CCF working sheet", METRICS: "Mapping count check", IR_ID_LIST: "Reference list check",
+  CONTROLS_SELECTION: "Custom control selection", CONTROLS_WORKING: "CCF working sheet", METRICS: "Mapping count check", IR_ID_LIST: "Reference list check",
   UNMAPPED_REVIEW: "Unmapped review", UNRECOGNISED: "Not recognised", PROCEDURE_MAP: "Test procedure mapping",
   SOURCE_LIST: "Framework list", SOURCE_METADATA: "Framework details", VERSION_TRANSITIONS: "Version transitions", CROSS_FRAMEWORK: "Framework relationships",
 };

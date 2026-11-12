@@ -1,4 +1,4 @@
-// Links between client controls and framework sections as the client sees them: each control shows only the framework
+// Links between custom controls and framework sections as the client sees them: each control shows only the framework
 // version it currently points to (see src/lib/demo/versions.ts), so a framework's previous and new version are never both
 // counted. Anything that counts or lists a framework's controls reads this instead of the raw links.
 import { prisma } from "@/lib/db";

@@ -209,7 +209,7 @@ function UploadFolderSetting() {
 
 /**
  * Rollback to the demo-ready state: every framework update offered again in Sources, nothing approved in Change
- * Analytics, and the client's controls removed so they can be uploaded again.
+ * Analytics, and the custom controls removed so they can be uploaded again.
  */
 function RollbackButton() {
   const [confirming, setConfirming] = useState(false);
@@ -228,7 +228,7 @@ function RollbackButton() {
   if (!confirming) return <Button variant="primary" onClick={() => setConfirming(true)}><RotateCcw /> Rollback</Button>;
   return (
     <span className="flex flex-wrap items-center gap-2">
-      <span className="text-xs text-fg-2">Restore the demo-ready state? Updates, approvals and uploaded client controls are cleared.</span>
+      <span className="text-xs text-fg-2">Restore the demo-ready state? Updates, approvals and uploaded custom controls are cleared.</span>
       <Button variant="primary" disabled={busy} onClick={run}>{busy ? <Loader2 className="animate-spin" /> : <RotateCcw />} Confirm rollback</Button>
       <Button variant="ghost" disabled={busy} onClick={() => setConfirming(false)}>Cancel</Button>
     </span>

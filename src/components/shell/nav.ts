@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Library, Network, Plug, ShieldCheck, GitCompareArrows, DatabaseZap, BookOpenText, Settings2, type LucideIcon,
+  LayoutDashboard, Library, Network, Plug, ShieldCheck, TableProperties, GitCompareArrows, DatabaseZap, BookOpenText, Settings2, type LucideIcon,
 } from "lucide-react";
 import { TERMS } from "@/lib/terms";
 
@@ -27,6 +27,7 @@ export const NAV: { section: string; items: NavItem[] }[] = [
     section: "Custom frameworks",
     items: [
       { href: "/controls", label: TERMS.clientControls, icon: ShieldCheck },
+      { href: "/ccf-mapping", label: TERMS.ccfMapping, icon: TableProperties },
       { href: "/change-analytics", label: TERMS.versionImpact, icon: GitCompareArrows },
     ],
   },

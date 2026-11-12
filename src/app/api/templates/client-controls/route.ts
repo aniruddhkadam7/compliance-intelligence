@@ -3,7 +3,7 @@ import { buildTemplate } from "@/lib/ingest/client-template";
 
 export const runtime = "nodejs";
 
-/** Downloadable client control template (Excel). */
+/** Downloadable custom control template (Excel). */
 export const GET = handle(async () => {
   await requireSession();
   return new Response(buildTemplate(), {

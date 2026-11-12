@@ -8,7 +8,7 @@ export const expandAction = (key: string) => `expand:${key}`;
 export const COLLAPSE_AT = 8;
 
 /**
- * Client control → test procedure → framework → obligations. A framework appears once per test procedure,
+ * Custom control → test procedure → framework → obligations. A framework appears once per test procedure,
  * so two frameworks are never merged and each keeps only its own obligations. `expanded` holds the
  * `${procedureKey}:${frameworkId}` groups the user opened.
  */

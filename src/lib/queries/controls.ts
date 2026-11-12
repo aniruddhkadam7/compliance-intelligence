@@ -161,7 +161,7 @@ export async function controlFacets() {
     scopes: scopes.filter((c) => c.scope).map((c) => ({ value: c.scope!, count: c._count._all })).sort((a, b) => b.count - a.count),
     prefixes: prefixes.map((c) => ({ value: c.domainPrefix, count: c._count._all })).sort((a, b) => a.value.localeCompare(b.value)),
     scope: await controlScope(),
-    // Framework updates applied in Sources, with how many of the client's controls each affects and how many are approved.
+    // Framework updates applied in Sources, with how many of the custom controls each affects and how many are approved.
     updates: v.updates.filter((u) => u.status === "UPDATED").map((u) => {
       const affected = [...u.affected].filter((n) => present.has(n));
       return {

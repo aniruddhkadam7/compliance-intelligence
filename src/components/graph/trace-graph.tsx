@@ -31,7 +31,7 @@ const COLUMN: Record<TraceKind, number> = { citation: 0, more: 0, framework: 1, 
 const COL_X = [0, 290, 590, 890];
 const ROW_H = 64;
 const ICON = { framework: Library, citation: Quote, more: Quote, requirement: ListTree, control: ShieldCheck, procedure: ClipboardCheck };
-const KIND_LABEL = { framework: "Framework", citation: "Obligation", more: "Obligations", requirement: "Requirement", control: "Client control", procedure: "Test procedure" };
+const KIND_LABEL = { framework: "Framework", citation: "Obligation", more: "Obligations", requirement: "Requirement", control: "Custom control", procedure: "Test procedure" };
 
 type FlowData = TraceNode & Record<string, unknown>;
 

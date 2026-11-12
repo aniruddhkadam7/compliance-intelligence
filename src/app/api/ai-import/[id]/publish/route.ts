@@ -21,6 +21,6 @@ export const POST = handle(async (req: Request, ctx: { params: Promise<{ id: str
   const session = await requireWriter();
   const { id } = await ctx.params;
   const result = await publishIngestion(id, Body.parse(await req.json()), session.sub);
-  // Mapping-change proposals for affected client controls, then an immediate check against the publisher.
+  // Mapping-change proposals for affected custom controls, then an immediate check against the publisher.
   return NextResponse.json({ ...result, ...(await afterPublish(id, result.frameworkId, session.sub)) });
 });

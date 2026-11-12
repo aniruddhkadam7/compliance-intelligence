@@ -4,7 +4,7 @@ export const RESET_SCOPES = ["controls", "library", "transitions", "connectors"]
 export type ResetScope = (typeof RESET_SCOPES)[number];
 
 export const RESET_SCOPE_LABELS: Record<ResetScope, string> = {
-  controls: "Client controls and mappings",
+  controls: "Custom controls and mappings",
   library: "Authoritative document library",
   transitions: "Version transition rows",
   connectors: "Connector history",
@@ -18,7 +18,7 @@ export async function resetData(db: PrismaClient, scopes: ResetScope[], actor: s
   const counts: Record<string, number> = {};
   await db.$transaction(
     async (tx) => {
-      // Client controls: everything uploaded by the client; the document library stays.
+      // Custom controls: everything uploaded by the client; the document library stays.
       if (scopes.includes("controls") || scopes.includes("library")) {
         counts.controlObligations = (await tx.controlObligation.deleteMany()).count;
         counts.procedureLinks = (await tx.testProcedureObligation.deleteMany()).count;

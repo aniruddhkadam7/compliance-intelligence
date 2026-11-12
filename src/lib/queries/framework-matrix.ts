@@ -67,6 +67,19 @@ const titleAfter = (name: string, identifier: string) => {
 const pretty = (t: string) => (t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t);
 const clip = (t: string | null, n: number) => (t && t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
 
+/**
+ * A section as screens show it: its publisher identifier (e.g. PR.AA-01, AC-02), title, domain and wording. The
+ * library's numeric Source Section IDs stay internal.
+ */
+export function sectionView(id: string, sid: string, name: string, text: string | null) {
+  const full = parseHeading(name).identifier ?? name;
+  // "11.300b Controls for identification codes" → identifier "11.300b", title "Controls for identification codes".
+  const lead = full.match(/^(\S*\d\S*)\s+(\S.*)$/);
+  const identifier = lead ? lead[1] : full;
+  const title = titleAfter(name, full) || (lead ? lead[2] : "");
+  return { id, sourceSectionId: sid, identifier, domain: parseHeading(name).domain ?? "Other sections", title, description: clip(withoutHeading(name, text), 400), href: null as string | null };
+}
+
 /** Section pairs returned for one framework pair. The largest supplied pair has about 2,000. */
 const MAX_PAIRS = 5000;
 
@@ -95,18 +108,7 @@ export async function frameworkConnection(a: string, b: string, basis: MatrixBas
           AND ((c1."frameworkId" = ${a} AND c2."frameworkId" = ${b}) OR (c1."frameworkId" = ${b} AND c2."frameworkId" = ${a}))`;
 
   const nm = await names([a, b]);
-  const dom = (n: string) => parseHeading(n).domain ?? "Other sections";
-
-  // Sections are shown by their publisher identifier (e.g. PR.AA-01, AC-02); the library's numeric Source Section
-  // IDs stay internal.
-  const sec = (id: string, sid: string, name: string, text: string | null) => {
-    const full = parseHeading(name).identifier ?? name;
-    // "11.300b Controls for identification codes" → identifier "11.300b", title "Controls for identification codes".
-    const lead = full.match(/^(\S*\d\S*)\s+(\S.*)$/);
-    const identifier = lead ? lead[1] : full;
-    const title = titleAfter(name, full) || (lead ? lead[2] : "");
-    return { id, sourceSectionId: sid, identifier, domain: dom(name), title, description: clip(withoutHeading(name, text), 400) };
-  };
+  const sec = sectionView;
   type Sec = ReturnType<typeof sec>;
   const pairs = new Map<string, { a: Sec; b: Sec; types: Set<string> }>();
   for (const r of rows) {

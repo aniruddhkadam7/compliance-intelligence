@@ -3,6 +3,7 @@ import { z } from "zod";
 import { handle, requireSession } from "@/lib/auth/server";
 import { controlCoverage, frameworkConnection, MATRIX_BASES, matrixPairs } from "@/lib/queries/framework-matrix";
 import { ensureReferenceMappings } from "@/lib/reference/mappings";
+import { CUSTOM_ID, customConnection, customCounts } from "@/lib/queries/custom-mapping";
 
 export const runtime = "nodejs";
 // The first request after a deploy loads the built-in reference mappings (about 80,000 relationships).
@@ -19,8 +20,11 @@ export const GET = handle(async (req: Request) => {
   const basis = Basis.parse(sp.get("basis") ?? undefined);
   const view = sp.get("view");
   if (view === "coverage") return NextResponse.json(await controlCoverage());
+  // The uploaded custom controls as a baseline: links per framework, and pairs from their own mappings.
+  if (view === "custom") return NextResponse.json(await customCounts());
   if (view === "connection") {
     const id = z.string().min(1).max(40);
+    if (sp.get("a") === CUSTOM_ID) return NextResponse.json(await customConnection(id.parse(sp.get("b"))));
     return NextResponse.json(await frameworkConnection(id.parse(sp.get("a")), id.parse(sp.get("b")), basis));
   }
   return NextResponse.json(await matrixPairs(basis));

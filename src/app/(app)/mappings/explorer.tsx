@@ -22,6 +22,8 @@ interface Pair { a: Doc; b: Doc; links: number }
 type Section = FrameworkConnection["sections"][number]["a"];
 
 const COLOR = { a: "var(--chart-1)", b: "var(--chart-2)" };
+/** Baseline value for the uploaded custom controls (see src/lib/queries/custom-mapping.ts). */
+const CUSTOM = "custom";
 const PAGE = 100;
 
 function heat(n: number, max: number): React.CSSProperties {
@@ -34,7 +36,7 @@ function heat(n: number, max: number): React.CSSProperties {
  *   Relationship Matrix every framework against every other: the number of mapped relationships in each cell.
  *   Relationship Graph  any two frameworks: baseline and target, the graph, and the mapped controls side by side.
  *   CCM Cross-Mapping   one row per CSA CCM control with the controls it maps to in every other framework.
- * Kept separate from client control traceability (control → test procedures → obligations), on the control pages.
+ * Kept separate from custom control traceability (control → test procedures → obligations), on the control pages.
  */
 export function MappingExplorer() {
   // The Relationship Graph is the first and default view; the full matrix is the second.
@@ -62,7 +64,7 @@ export function MappingExplorer() {
         <TabsList className="mb-4">
           <TabsTrigger value="graph"><Share2 /> Relationship Graph</TabsTrigger>
           <TabsTrigger value="overview"><Grid3x3 /> Relationship Matrix</TabsTrigger>
-          <TabsTrigger value="ccm"><TableProperties /> CCM Cross-Mapping</TabsTrigger>
+          <TabsTrigger value="ccm"><TableProperties /> CSA CCM Cross-Mapping</TabsTrigger>
         </TabsList>
 
         {/* Reads its own data (the CCM rows), so it does not wait for the framework pairs. */}
@@ -153,6 +155,14 @@ function RelationGraph({ docs, label, count, pairs, a, b, onChange }: {
   const strongest = useMemo(() => [...pairs].sort((x, y) => y.links - x.links)[0], [pairs]);
   const baseline = a || strongest.a.id;
   const target = a || b ? b : strongest.b.id;
+  // The uploaded custom controls (CCF) can be the baseline once they are imported; their links are their own mappings.
+  const custom = useQuery({ queryKey: ["fm-custom"], queryFn: () => apiGet<{ controls: number; counts: Record<string, number> }>(`/api/framework-matrix${qs({ view: "custom" })}`) });
+  const isCustom = baseline === CUSTOM;
+  const links = (fw: string) => (isCustom ? custom.data?.counts[fw] ?? 0 : count(baseline, fw));
+  const baselineOptions = [
+    ...(custom.data?.controls ? [{ value: CUSTOM, label: "Custom controls (CCF)", hint: `${formatNumber(custom.data.controls)} controls` }] : []),
+    ...docs.map((d) => ({ value: d.id, label: label(d) })),
+  ];
 
   const conn = useQuery({
     queryKey: ["fm-connection", baseline, target, "supplied"],
@@ -167,14 +177,15 @@ function RelationGraph({ docs, label, count, pairs, a, b, onChange }: {
           <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted">Baseline Framework</span>
           <Select
             value={baseline} onChange={(v) => onChange(v, target === v ? "" : target)} placeholder="Select a baseline framework"
-            options={docs.map((d) => ({ value: d.id, label: label(d) }))} triggerClassName="min-w-[260px]" aria-label="Baseline Framework"
+            options={baselineOptions} triggerClassName="min-w-[260px]" aria-label="Baseline Framework"
           />
         </label>
         <label className="block">
           <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted">Target Framework</span>
           <Select
             value={target} onChange={(v) => onChange(baseline, v)} placeholder="Select a target framework"
-            options={docs.filter((d) => d.id !== baseline).map((d) => ({ value: d.id, label: label(d), hint: count(baseline, d.id) ? `${formatNumber(count(baseline, d.id))} mapped` : undefined }))}
+            options={docs.filter((d) => d.id !== baseline).map((d) => ({ value: d.id, label: label(d), hint: links(d.id) ? `${formatNumber(links(d.id))} mapped` : undefined }))
+              .sort((x, y) => (isCustom ? Number(!!y.hint) - Number(!!x.hint) : 0))}
             triggerClassName="min-w-[260px]" aria-label="Target Framework"
           />
         </label>
@@ -185,11 +196,11 @@ function RelationGraph({ docs, label, count, pairs, a, b, onChange }: {
       ) : conn.isLoading ? <Skeleton className="h-[420px]" /> : conn.error ? (
         <Card><ErrorState error={conn.error} onRetry={conn.refetch} /></Card>
       ) : !conn.data || !conn.data.a || !conn.data.b ? null : !conn.data.links ? (
-        <Card><EmptyState icon={Network} title={`No mapped relationships between ${conn.data.a.short} and ${conn.data.b.short}`} description="No supplied relationship file links these two frameworks." /></Card>
+        <Card><EmptyState icon={Network} title={`No mapped relationships between ${conn.data.a.short} and ${conn.data.b.short}`} description={isCustom ? "None of the custom controls is mapped to this framework in the uploaded workbook." : "No supplied relationship file links these two frameworks."} /></Card>
       ) : (
         <>
           <Card>
-            <CardHeader title="Relationship graph" description={`${conn.data.a.short} and ${conn.data.b.short}: ${formatNumber(conn.data.links)} mapped relationships. Each line joins two requirements.`} icon={<Share2 />} />
+            <CardHeader title="Relationship graph" description={isCustom ? `${conn.data.a.short} and ${conn.data.b.short}: ${formatNumber(conn.data.links)} mappings from the uploaded workbook. Each line joins a custom control to a section.` : `${conn.data.a.short} and ${conn.data.b.short}: ${formatNumber(conn.data.links)} mapped relationships. Each line joins two requirements.`} icon={<Share2 />} />
             <div className="p-4"><RelationshipGraph data={conn.data} colors={COLOR} /></div>
           </Card>
           <MappingTable key={`${baseline}|${target}`} data={conn.data} />
@@ -210,7 +221,7 @@ function MappingTable({ data }: { data: FrameworkConnection }) {
         <table className="w-full min-w-[640px] table-fixed text-left text-xs">
           <thead className="bg-surface-2">
             <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-              <th className="w-1/2 px-4 py-2"><span style={{ color: COLOR.a }}>■</span> Baseline Framework Control<div className="mt-0.5 text-[11px] font-normal normal-case tracking-normal text-subtle">{data.a?.short}</div></th>
+              <th className="w-1/2 px-4 py-2"><span style={{ color: COLOR.a }}>■</span> {data.a?.id === CUSTOM ? "Custom Control" : "Baseline Framework Control"}<div className="mt-0.5 text-[11px] font-normal normal-case tracking-normal text-subtle">{data.a?.short}</div></th>
               <th className="w-1/2 px-4 py-2"><span style={{ color: COLOR.b }}>■</span> Mapped Framework Control<div className="mt-0.5 text-[11px] font-normal normal-case tracking-normal text-subtle">{data.b?.short}</div></th>
             </tr>
           </thead>
@@ -239,7 +250,7 @@ function MappingTable({ data }: { data: FrameworkConnection }) {
 function ControlCell({ s }: { s: Section }) {
   return (
     <>
-      <Link href={`/citations?citation=${s.sourceSectionId}`} className="font-mono font-medium text-fg hover:text-accent">{s.identifier}</Link>
+      <Link href={s.href ?? `/citations?citation=${s.sourceSectionId}`} className="font-mono font-medium text-fg hover:text-accent">{s.identifier}</Link>
       {s.title && <span className="ml-2 font-medium text-fg-2">{s.title}</span>}
       {s.description && <p className="mt-0.5 line-clamp-3 text-muted">{s.description}</p>}
     </>

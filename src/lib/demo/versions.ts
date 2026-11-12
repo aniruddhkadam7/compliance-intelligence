@@ -1,4 +1,4 @@
-// Which framework version a client control points to while a framework update is under review. Pure, so it can be tested
+// Which framework version a custom control points to while a framework update is under review. Pure, so it can be tested
 // without a database; src/lib/demo/state.ts supplies the data and src/lib/queries/control-links.ts applies it to queries.
 
 /** How a control relates to an applied update: awaiting approval, rejected (kept on the previous version) or approved. */
@@ -7,7 +7,7 @@ export type Highlight = "pending" | "updated" | "rejected";
 /** One framework update as it stands for the client: what was applied and how each control was reviewed. */
 export interface UpdateView {
   status: "AVAILABLE" | "UPDATED" | "REJECTED";
-  /** The client's controls were uploaded after the update was applied, so they map to the new version outright. */
+  /** The custom controls were uploaded after the update was applied, so they map to the new version outright. */
   uploadedAfter: boolean;
   previousId: string | null;
   currentId: string | null;

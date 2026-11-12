@@ -158,7 +158,7 @@ export async function getFramework(id: string) {
   };
 }
 
-/** Client controls linked through any section of the framework, for the version each control points to. */
+/** Custom controls linked through any section of the framework, for the version each control points to. */
 export async function frameworkControls(frameworkId: string, p: { page: number; pageSize: number; q: string }) {
   const [links, controls] = await Promise.all([
     visibleLinks().then((all) => all.filter((l) => l.frameworkId === frameworkId)),

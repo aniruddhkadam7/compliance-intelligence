@@ -16,7 +16,7 @@ interface Job {
 interface Audit { id: string; actor: string; role: string | null; action: string; entity: string; entityId: string | null; details: unknown; createdAt: string }
 
 const KIND_LABEL: Record<string, string> = {
-  LIBRARY: "Document library", CLIENT_CONTROLS: "Client controls", RELATIONSHIPS: "Source relationships",
+  LIBRARY: "Document library", CLIENT_CONTROLS: "Custom controls", RELATIONSHIPS: "Source relationships",
   CCF_WORKBOOK: "Workbook (legacy)", TRANSITION_WORKBOOK: "Transition (legacy)",
 };
 

@@ -5,9 +5,9 @@ import { confirmImport } from "./persist";
 import { buildTemplate, SAMPLE_CONTROLS } from "./client-template";
 import { parseHeading } from "@/lib/sources/headings";
 
-/** Only allowed while no client controls exist, so real client data is never replaced by samples. */
+/** Only allowed while no custom controls exist, so real client data is never replaced by samples. */
 export async function loadSampleControls(actor: string) {
-  if (await prisma.ccfControl.count()) throw new HttpError(409, "Client controls already exist. Sample controls can only be loaded into an empty client layer.");
+  if (await prisma.ccfControl.count()) throw new HttpError(409, "Custom controls already exist. Sample controls can only be loaded when no custom controls are loaded.");
   const frameworks = await prisma.framework.findMany({ where: { sourceId: { in: [...new Set(SAMPLE_CONTROLS.flatMap((c) => c.sections.map((s) => s.framework)))] } }, select: { sourceId: true, name: true, citations: { select: { sourceSectionId: true, sectionName: true } } } });
   const resolve = (fw: string, ident: string) => frameworks.find((f) => f.sourceId === fw)?.citations.find((c) => parseHeading(c.sectionName).identifier === ident)?.sourceSectionId ?? null;
   const rows = SAMPLE_CONTROLS.map((c) => {

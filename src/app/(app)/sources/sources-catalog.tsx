@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, BellRing, BookOpenText, Check, Download, ExternalLink, Globe, Info, Library, Loader2, RefreshCw, ScanSearch, Search, X } from "lucide-react";
+import { ArrowRight, ArrowUpCircle, BellRing, BookOpenText, Check, Download, ExternalLink, Globe, Library, Loader2, RefreshCw, ScanSearch, Search, X } from "lucide-react";
 import { useProgressSteps, type ProgressStep } from "@/components/progress-steps";
 import { EmptyState, Mono, Page, PageHeader, StatStrip } from "@/components/common";
 import { Card } from "@/components/ui/card";
@@ -154,6 +154,40 @@ function SummaryCard({ s }: { s: ChangeSummary }) {
   );
 }
 
+/** What changed between two versions held in the library, counted section by section (no summary text is invented). */
+function ComparisonCard({ from, to, c }: { from: string; to: string; c: NonNullable<SourceRow["comparison"]> }) {
+  const n = (v: number, s: string) => `${formatNumber(v)} ${s}${v === 1 ? "" : "s"}`;
+  // A domain whose heading only gained a title ("Chapter II" → "Chapter II Prohibited AI Practices") is renamed, not new.
+  const renamed = c.domainsRemoved.flatMap((old) => c.domainsAdded.filter((x) => x.startsWith(`${old} `)).map((x) => [old, x] as const));
+  const added = c.domainsAdded.filter((x) => !renamed.some(([, y]) => y === x));
+  const removed = c.domainsRemoved.filter((x) => !renamed.some(([o]) => o === x));
+  return (
+    <div className="space-y-1.5 py-1 text-left">
+      <div className="text-[12px] font-semibold">{from} → {to}</div>
+      {c.comparable ? (
+        <p>{n(c.added, "section")} added, {n(c.removed, "section")} removed, {n(c.changed, "section")} reworded; {n(c.unchanged, "section")} unchanged.</p>
+      ) : (
+        <p>{formatNumber(c.counts.current)} sections in {to}, {formatNumber(c.counts.previous)} in {from}. The two versions number their sections differently, so they are not compared one to one.</p>
+      )}
+      {added.length > 0 && <p><span className="font-semibold">New domains: </span>{added.join(", ")}</p>}
+      {removed.length > 0 && <p><span className="font-semibold">Domains removed: </span>{removed.join(", ")}</p>}
+      {renamed.length > 0 && <p><span className="font-semibold">Renamed: </span>{renamed.map(([o, x]) => `${o} → ${x}`).join(", ")}</p>}
+      <p className="text-[10.5px] opacity-70">Compared section by section from both versions in the library.</p>
+    </div>
+  );
+}
+
+/** A newer version a connector found at the publisher: what it reported and when. */
+function FindingCard({ from, f }: { from: string | null; f: SourceRow["updates"][number] }) {
+  return (
+    <div className="space-y-1.5 py-1 text-left">
+      <div className="text-[12px] font-semibold">{from ? `${from} → ` : ""}{f.newValue}</div>
+      <p>{f.summary || f.title}</p>
+      <p className="text-[10.5px] opacity-70">Detected by {f.connector} on {formatDate(f.detectedAt)}. The new version is not in the library yet, so its sections cannot be compared.</p>
+    </div>
+  );
+}
+
 const STATUS_FILTERS = [{ value: "AVAILABLE", label: "Update available" }, { value: "UPDATED", label: "Updated" }];
 export const versionLabel = (family: string, v: string | null) => (v && family === "CIS Controls" && /^\d/.test(v) ? `v${v}` : v);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -162,7 +196,7 @@ const UPDATE_STEPS = (names: string[]): ProgressStep[] => [
   { icon: Globe, title: "Scanning publisher sources", detail: "Checking the NIST, CIS and ISO official sites for new releases" },
   { icon: Download, title: "Downloading new versions", detail: `${names.length} official document${names.length === 1 ? "" : "s"} retrieved from the publishers` },
   { icon: ScanSearch, title: "Extracting and verifying", detail: "Sections, identifiers and requirement text checked against the official document" },
-  { icon: Library, title: "Updating the library", detail: "New versions installed; previous versions kept for client mappings" },
+  { icon: Library, title: "Updating the library", detail: "New versions installed; previous versions kept for custom control mappings" },
 ];
 
 /**
@@ -226,6 +260,32 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
   }, [docs, summaries]);
   /** The platform has the newer version: it is offered as an update (from the library or a connector) or already installed. */
   const hasNewVersion = (r: Row) => (!!r.offer && !r.found) || r.u?.status === "UPDATED";
+  /**
+   * "What's new" for every row with a newer version, from the best source there is: the team's summary of changes
+   * (spreadsheet), else the section-by-section comparison of both versions in the library, else what the connector
+   * found at the publisher, else what is known about the uploaded version. Nothing is written that the data does not say.
+   */
+  const whatsNew = (r: Row): React.ReactNode | null => {
+    if (!hasNewVersion(r) && !r.found) return null;
+    const team = summaryOf(r.d);
+    if (team) return <SummaryCard s={team} />;
+    // A version found at the publisher is not in the library: only the connector's finding describes it.
+    if (r.found) return <FindingCard from={r.current} f={r.found} />;
+    // A framework update: its new version compared with the previous one, both held in the library.
+    const newer = r.u ? docs.find((x) => x.id === r.u!.currentId) : null;
+    if (newer?.comparison) {
+      const prev = docs.find((x) => x.id === newer.previousVersion?.id);
+      return <ComparisonCard from={prev?.short ? `${prev.short} ${prev.version ?? ""}`.trim() : r.d.short} to={`${newer.short} ${newer.version ?? ""}`.trim()} c={newer.comparison} />;
+    }
+    if (r.offer?.importId)
+      return (
+        <div className="space-y-1.5 py-1 text-left">
+          <div className="text-[12px] font-semibold">{r.d.short} → {r.latest}</div>
+          <p>{r.offer.fromConnector ? `Downloaded in full from the publisher by ${r.offer.fromConnector}.` : "Uploaded to the Source Document Library and released by an admin."} The section-by-section comparison is shown once it is installed with Update.</p>
+        </div>
+      );
+    return null;
+  };
   // A framework is connected when a monitoring connector watches any version of it.
   const connectorsOf = (d: SourceRow) => {
     const seen = new Map<string, SourceRow["monitoring"][number]>();
@@ -261,7 +321,7 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
         // Uploaded versions released by an admin are installed into the library one by one.
         for (const o of uploads) await apiSend(`/api/frameworks/${o.docId}/apply-update`);
       }, names);
-      toast.success(`${names.join(", ")} installed`, { description: "Client controls on the previous version are listed in Change Analytics for approval." });
+      toast.success(`${names.join(", ")} installed`, { description: "Custom controls on the previous version are listed in Change Analytics for approval." });
       setSelected(new Set());
       qc.invalidateQueries(); // Change Analytics and Custom Control Mapping read this state too
       router.refresh();
@@ -339,7 +399,7 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
               <Select value={s.source} onChange={(v) => set({ source: v })} allLabel="Any monitoring" options={[{ value: "connected", label: "Monitored by a connector", hint: connectedCount }, { value: "manual", label: "Not monitored", hint: rowsAll.length - connectedCount }]} aria-label="Monitoring" />
               {active && <Button variant="ghost" size="sm" onClick={() => set({ q: "", type: "", publisher: "", applicability: "", status: "", source: "" })}><X /> Clear</Button>}
             </div>
-            <div className="px-4 py-2 text-xs text-muted tabular">{s.source === "connected" ? `${rows.length} connectors` : `${rows.length} of ${rowsAll.length} documents`}<span className="text-muted"> · </span><span className="text-accent">click any framework or document to inspect its details</span>. Hover <Info className="inline size-3 align-[-2px]" /> next to a new version for what changed.</div>
+            <div className="px-4 py-2 text-xs text-muted tabular">{s.source === "connected" ? `${rows.length} connectors` : `${rows.length} of ${rowsAll.length} documents`}<span className="text-muted"> · </span><span className="text-accent">click any framework or document to inspect its details</span>. Hover <ArrowUpCircle className="inline size-3 align-[-2px] text-warning" /> What&apos;s new next to a version for what changed.</div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
@@ -387,9 +447,13 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
                           {r.latest ? (
                             <span className="inline-flex items-center gap-1.5">
                               <span className={cn(r.status === "AVAILABLE" && !r.rejected ? "font-semibold text-warning" : "text-fg-2")}>{r.latest}</span>
-                              {hasNewVersion(r) && summaryOf(d) && (
-                                <Tooltip content={<SummaryCard s={summaryOf(d)!} />} className="max-w-md px-3 py-2">
-                                  <button type="button" aria-label={`What changed: ${summaryOf(d)!.legacy} to ${summaryOf(d)!.latest}`} className="grid size-4 place-items-center rounded-full text-muted hover:text-accent"><Info className="size-3.5" /></button>
+                              {whatsNew(r) && (
+                                <Tooltip content={whatsNew(r)} className="max-w-md px-3 py-2">
+                                  <button type="button" aria-label={`What changed in ${r.latest}`}
+                                    className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-px text-[10.5px] font-medium transition-colors",
+                                      r.status === "AVAILABLE" && !r.rejected ? "border-warning/40 bg-warning-soft text-warning hover:brightness-95" : "border-success/30 bg-success-soft text-success hover:brightness-95")}>
+                                    <ArrowUpCircle className="size-3" /> What&apos;s new
+                                  </button>
                                 </Tooltip>
                               )}
                             </span>
@@ -400,7 +464,7 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
                           {r.status === "AVAILABLE" ? (
                             <Tooltip content={r.rejected ? "Update rejected; the current version stays in use" : r.found ? `Version ${r.latest} was found by ${r.found.connector}; it is not in the library yet` : !o?.released ? `Version ${r.latest} is waiting for an admin to release it` : `Version ${r.latest} is available`}>
                               <span className={cn("flex flex-col whitespace-nowrap text-xs transition-opacity duration-700", (r.rejected || fade) && "opacity-50")}>
-                                <span className="flex items-center gap-1.5"><Dot tone="warning" />Update available</span>
+                                <span className="flex items-center gap-1.5 font-medium text-warning"><ArrowUpCircle className="size-3.5" />Update available</span>
                                 {r.found && !r.rejected && <span className="pl-3 text-[11px] text-muted">Found by connector · not in the library yet</span>}
                                 {o && !r.found && !r.rejected && <span className="pl-3 text-[11px] text-muted">{o.fromConnector ? `New version downloaded by ${o.fromConnector}` : "New version in the Source Document Library"}</span>}
                               </span>

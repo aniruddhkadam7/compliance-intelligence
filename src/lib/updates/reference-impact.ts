@@ -1,10 +1,10 @@
-// Framework update impact on the client's controls, from the team's "Change Analytics" workbook (built into the app as
+// Framework update impact on the custom controls, from the team's "Change Analytics" workbook (built into the app as
 // src/data/framework-update-impact.json by scripts/build-update-impact.ts).
 //
 // For each framework update (e.g. ISO/IEC 27002 2013 -> 2022) the workbook says, per client test procedure, which sections
 // it maps to under the legacy and under the latest version. A test procedure whose two lists differ has changed; the
 // control that owns it is affected. Nothing here is inferred, and nothing is written to the database: control titles are
-// read from the client's controls when they are loaded.
+// read from the custom controls when they are loaded.
 import { prisma } from "@/lib/db";
 
 interface ImpactData {
@@ -43,7 +43,7 @@ export async function listReferenceImpact(): Promise<ImpactSummary[]> {
   return data.updates.map((u) => summarise(data, u));
 }
 
-/** Client controls with at least one changed test procedure in an update. */
+/** Custom controls with at least one changed test procedure in an update. */
 export async function affectedControlNames(key: string) {
   const u = (await load()).updates.find((x) => x.key === key);
   return new Set(u?.changed.map((c) => c[0]) ?? []);

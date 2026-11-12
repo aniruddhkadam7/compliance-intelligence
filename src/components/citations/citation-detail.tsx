@@ -138,7 +138,7 @@ export function CitationDetailSheet({ citationId, onClose, onOpen }: { citationI
 
           {controls.length > 0 && (
           <section className="p-5">
-            <SectionTitle>Client controls mapped (client data)</SectionTitle>
+            <SectionTitle>Custom controls mapped</SectionTitle>
             {(
               <ul className="divide-y divide-border rounded-md border border-border">
                 {controls.map((c) => (

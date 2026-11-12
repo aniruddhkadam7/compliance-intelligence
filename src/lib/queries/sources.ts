@@ -1,5 +1,5 @@
 // Sources: authoritative documents with version and update context. Global layer only, plus an
-// optional count of client controls mapped to the document (client layer, read-only).
+// optional count of custom controls mapped to the document (client layer, read-only).
 import { prisma } from "@/lib/db";
 import { deriveFamily, shortName } from "@/lib/frameworks";
 import { MECHANISM_LABEL, type Mechanism } from "@/lib/connectors/types";
@@ -123,7 +123,7 @@ export async function pendingImports(frameworkId?: string) {
 export type FrameworkUpdateKind = "READY" | "AVAILABLE" | "NEWER_IN_LIBRARY";
 export interface FrameworkUpdate { frameworkId: string; short: string; from: string | null; to: string | null; latest: string | null; kind: FrameworkUpdateKind }
 
-/** Documents with a newer version, by how far along the update is. Used to flag the client controls mapped to them. */
+/** Documents with a newer version, by how far along the update is. Used to flag the custom controls mapped to them. */
 export async function frameworkUpdates(): Promise<Map<string, FrameworkUpdate>> {
   const [pending, fws] = await Promise.all([pendingImports(), prisma.framework.findMany({ select: { id: true, name: true, sourceId: true, family: true, versionLabel: true } })]);
   const checks = await latestChecks(fws.map((f) => f.id));

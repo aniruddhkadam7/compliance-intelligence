@@ -8,7 +8,7 @@ import { listReferenceImpact, referenceImpactDetail } from "@/lib/updates/refere
 export const runtime = "nodejs";
 
 /**
- * Framework update impact on the client's controls: the list, or one update in full with ?key=. Each update carries
+ * Framework update impact on the custom controls: the list, or one update in full with ?key=. Each update carries
  * its demo status (offered, applied or rejected in Sources) and the controls approved so far.
  */
 export const GET = handle(async (req: Request) => {
