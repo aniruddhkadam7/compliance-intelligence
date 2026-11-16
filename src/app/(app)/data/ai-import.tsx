@@ -34,7 +34,7 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
   DISCARDED: { label: "Discarded", tone: "neutral" }, REJECTED: { label: "Rejected", tone: "neutral" }, REVERTED: { label: "Reverted", tone: "neutral" }, FAILED: { label: "Failed", tone: "danger" },
 };
 const MODE = {
-  SAME_VERSION: { label: "Update the existing document", hint: "Changed text is updated and new sections are added. Nothing is deleted." },
+  SAME_VERSION: { label: "Update the existing document", hint: "Changed text is updated and new obligations are added. Nothing is deleted." },
   NEW_VERSION: { label: "Add as a new version", hint: "Creates a new document next to the previous version; both remain in the library." },
   NEW_DOCUMENT: { label: "Add as a new document", hint: "Creates a new document in the library." },
 } as const;
@@ -150,9 +150,22 @@ export function DraftView({ id, onBack }: { id: string; onBack: () => void }) {
       {d.status === "EXTRACTING" && (
         <Card>
           <CardBody>
-            <div className="mb-2 flex items-center gap-2 text-[13px] text-fg"><Loader2 className="size-4 animate-spin text-accent" /> Reading sections: part {Math.min(d.chunksDone + 1, d.chunks)} of {d.chunks}</div>
-            <div className="h-2 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-[var(--chart-1)] transition-all" style={{ width: `${(d.chunksDone / Math.max(1, d.chunks)) * 100}%` }} /></div>
-            <p className="mt-2 text-xs text-muted">You can leave this page; progress shows in the header and you will be notified when it is done. Each part takes up to a minute.</p>
+            {/* Two steps: reading the document part by part, then comparing it with the previous version (the longest). */}
+            <ol className="mb-3 flex flex-wrap gap-2 text-xs">
+              {[["Read the document", d.chunksDone >= d.chunks], ["Compare with the previous version", false]].map(([label, done], i) => {
+                const active = !done && (i === 0 || d.chunksDone >= d.chunks);
+                return <li key={String(label)} className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1", done ? "border-success/30 bg-success-soft text-success" : active ? "border-border-strong bg-surface-3 font-medium text-fg" : "border-border text-muted")}>{done ? <CheckCircle2 className="size-3.5" /> : active ? <Loader2 className="size-3.5 animate-spin" /> : <span className="tabular">{i + 1}</span>}{label}</li>;
+              })}
+            </ol>
+            {d.chunksDone < d.chunks ? (
+              <>
+                <div className="mb-2 flex items-center gap-2 text-[13px] text-fg">Reading obligations: part {Math.min(d.chunksDone + 1, d.chunks)} of {d.chunks}</div>
+                <div className="h-2 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-[var(--chart-1)] transition-all" style={{ width: `${(d.chunksDone / Math.max(1, d.chunks)) * 100}%` }} /></div>
+              </>
+            ) : (
+              <div className="text-[13px] text-fg">Comparing with the previous version: matching obligations, then the AI review of what moved and what changed. This usually takes 2 to 3 minutes.</div>
+            )}
+            <p className="mt-2 text-xs text-muted">You can leave this page: progress shows at the top of every page, and the draft appears in the notifications when it is ready for review.</p>
           </CardBody>
         </Card>
       )}
@@ -284,7 +297,7 @@ function Review({ d, onDone }: { d: Draft; onDone: () => void }) {
       <StatStrip
         className="xl:grid-cols-4"
         items={[
-          { label: "Sections found", value: d.sections.length },
+          { label: "Obligations found", value: d.sections.length },
           { label: "Verified in the document", value: verified, tone: verified === d.sections.length ? "success" : "warning", hint: "Start and end of the text were found word for word in the file" },
           { label: "Not verified", value: d.sections.length - verified, tone: verified < d.sections.length ? "warning" : "default", hint: "Cannot be published until checked; excluded by default" },
           { label: "Selected to publish", value: toPublish },
@@ -293,7 +306,7 @@ function Review({ d, onDone }: { d: Draft; onDone: () => void }) {
 
       {d.comparison && c && (
         <Card>
-          <CardHeader title={`Compared with ${d.comparison.base.short}`} description="Computed comparison (not AI): identifiers first, then wording similarity for renumbered, split and combined sections" />
+          <CardHeader title={`Compared with ${d.comparison.base.short}`} description="Computed comparison (not AI): identifiers first, then wording similarity for renumbered, split and combined obligations" />
           <CardBody className="space-y-3">
             {d.relationCounts && (
               <div className="flex flex-wrap gap-2 text-xs">
@@ -332,7 +345,7 @@ function Review({ d, onDone }: { d: Draft; onDone: () => void }) {
           <table className="w-full text-left text-xs">
             <thead className="sticky top-0 z-10 bg-surface-2">
               <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                <th className="w-10 px-3 py-2">Use</th><th className="px-3 py-2">Section</th><th className="px-3 py-2">Under</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Source</th><th className="px-3 py-2">Check</th>
+                <th className="w-10 px-3 py-2">Use</th><th className="px-3 py-2">Obligation</th><th className="px-3 py-2">Under</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Source</th><th className="px-3 py-2">Check</th>
               </tr>
             </thead>
             <tbody>
@@ -361,7 +374,7 @@ function Review({ d, onDone }: { d: Draft; onDone: () => void }) {
               ))}
             </tbody>
           </table>
-          {!sections.length && <p className="px-4 py-6 text-center text-xs text-muted">No sections in this view.</p>}
+          {!sections.length && <p className="px-4 py-6 text-center text-xs text-muted">No obligations in this view.</p>}
         </div>
       </Card>
 

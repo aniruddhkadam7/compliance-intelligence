@@ -11,6 +11,7 @@ import { cosine, embed } from "@/lib/ai/embeddings";
 import { parseHeading } from "@/lib/sources/headings";
 import { applyCrosswalk, idKey, refineWithSemantics, relateVersions, relationCounts } from "@/lib/sources/relations";
 import { generateProposals } from "./impact";
+import { natureCounts, reviewRelations } from "@/lib/ai/review-changes";
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 export const LIBRARY_COMPARISON = "LIBRARY_COMPARISON";
@@ -106,6 +107,10 @@ export async function recordLibraryComparison(previousId: string, currentId: str
   } catch (e) {
     semantic = { pairs: 0, note: `Semantic matching unavailable: ${e instanceof Error ? e.message : String(e)}` };
   }
+  // AI review where rules cannot decide: successors of unmatched sections, and the nature of each modification.
+  const reviewed = await reviewRelations(relations, prev, cur);
+  relations = reviewed.relations;
+  const review = { note: reviewed.stats.note, matched: reviewed.stats.matched, natures: natureCounts(reviewed.relations) };
   const before = snapshot(prev), after = snapshot(cur);
   const { summary } = await summariseChanges(label(prevFw), label(curFw), relations, new Map(Object.entries(before.texts)), new Map(Object.entries(after.texts)));
 
@@ -113,7 +118,7 @@ export async function recordLibraryComparison(previousId: string, currentId: str
     fileName: `Library comparison: ${label(prevFw)} → ${label(curFw)}`, fileHash: LIBRARY_COMPARISON, status: "PUBLISHED", model: AI_MODEL(), text: "", pages: 0, chunks: 0,
     detected: json({ source: LIBRARY_COMPARISON, title: curFw.name, shortTitle: label(curFw), libraryVersion: curFw.versionLabel }),
     matchFrameworkId: prevFw.id, matchKind: "NEW_VERSION", publishedFrameworkId: curFw.id, summary,
-    analysis: json({ base: { id: prevFw.id, short: shortName(prevFw.name), version: prevFw.versionLabel }, counts: relationCounts(relations), relations, semantic, crosswalk, previous: before, current: { domains: after.domains } }),
+    analysis: json({ base: { id: prevFw.id, short: shortName(prevFw.name), version: prevFw.versionLabel }, counts: relationCounts(relations), relations, semantic, review, crosswalk, previous: before, current: { domains: after.domains } }),
   };
   let id: string;
   if (existing) {

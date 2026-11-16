@@ -54,7 +54,7 @@ export function CcfCrossMappingView() {
     <Page>
       <PageHeader
         title={TERMS.ccfMapping}
-        description="Your custom controls (CCF) against each framework: the sections every control is mapped to in the uploaded mapping workbook. Control level only; open a control for its test procedures and obligations."
+        description="Your custom controls (CCF) against each framework: the obligations every control is mapped to in the uploaded mapping workbook. Control level only; open a control for its test procedures and obligations."
       />
       {isLoading ? <Skeleton className="h-[420px]" /> : error ? <Card><ErrorState error={error} onRetry={refetch} /></Card> : !data?.controls.length ? (
         <Card>
@@ -81,7 +81,7 @@ export function CcfCrossMappingView() {
             <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
               <div className="relative min-w-[240px] flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
-                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search control ID, title or mapped section…" className="pl-8" aria-label="Search controls" />
+                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search control ID, title or mapped obligation…" className="pl-8" aria-label="Search controls" />
               </div>
               {s.q && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", page: "1" }); }}><X /> Clear</Button>}
               <span className="ml-auto text-xs tabular text-muted">{formatNumber(rows.length)} of {formatNumber(data.controls.length)} custom controls</span>

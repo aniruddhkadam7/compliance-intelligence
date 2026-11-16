@@ -16,9 +16,9 @@ export const metadata = { title: TERMS.overview };
 const LAW = "Law or Regulation";
 
 const HEADLINES: { icon: LucideIcon; title: string; sub: string; detail: string; href: string }[] = [
-  { icon: Layers, title: "Every rule you answer to.", sub: "One map of your controls.", detail: "Every law, regulation, standard and framework in scope, broken into requirements and linked to the controls you already run.", href: "/frameworks" },
+  { icon: Layers, title: "Every rule you answer to.", sub: "One map of your controls.", detail: "Every law, regulation, standard and framework in scope, broken into obligations and linked to the controls you already run.", href: "/frameworks" },
   { icon: RefreshCcw, title: "Compliance that keeps pace", sub: "with the rules.", detail: "Connectors watch official sources for new versions. When you install one, Change Analytics lists the affected controls for you to approve or reject.", href: "/sources" },
-  { icon: Gauge, title: "Know where you stand.", sub: "Against every rule that applies.", detail: "Your controls with the frameworks and requirements they are mapped to. Met / partly met / open classification is planned.", href: "/controls" },
+  { icon: Gauge, title: "Know where you stand.", sub: "Against every rule that applies.", detail: "Your controls with the frameworks and obligations they are mapped to. Met / partly met / open classification is planned.", href: "/controls" },
 ];
 
 const tally = (items: string[]) => [...items.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map<string, number>())];
@@ -61,7 +61,7 @@ export default async function OverviewPage() {
           <Tag>Regulatory Intelligence</Tag>
           <div className="mt-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Your compliance landscape, connected</div>
           <h1 className="mt-1.5 text-[26px] font-semibold leading-[1.2] tracking-tight text-fg sm:text-[30px]">One regulatory <RollbackWord>landscape</RollbackWord>.<br />One connected view of compliance.</h1>
-          <p className="mt-3 max-w-5xl text-[13px] leading-relaxed text-muted">Regulations multiply every year. Requirements evolve, frameworks overlap, and manually mapping them to existing controls creates unnecessary complexity.</p>
+          <p className="mt-3 max-w-5xl text-[13px] leading-relaxed text-muted">Regulations multiply every year. Obligations evolve, frameworks overlap, and manually mapping them to existing controls creates unnecessary complexity.</p>
           <p className="mt-2 max-w-5xl text-[13px] leading-relaxed text-muted">The platform tracks official sources for new framework versions, keeps a connected library of frameworks and their relationships, and shows which of your controls each version change affects. Control mappings today come from the manually prepared Excel mapping workbook; AI-powered regulatory analysis and automatic control mapping are planned.</p>
         </div>
       </section>
@@ -96,7 +96,7 @@ export default async function OverviewPage() {
         <div className="px-7 py-8">
           <Tag>Regulatory Intelligence</Tag>
           <h2 className="mt-3 text-[24px] font-semibold leading-[1.2] tracking-tight text-fg">Stay ahead of change.<br />Stay connected to compliance.</h2>
-          <p className="mt-2 text-[13px] text-muted">A smarter way to navigate evolving regulations and connect requirements to the controls that matter.</p>
+          <p className="mt-2 text-[13px] text-muted">A smarter way to navigate evolving regulations and connect obligations to the controls that matter.</p>
           <Link href="/controls" className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-[#ffe600] px-3.5 py-2 text-[12px] font-semibold text-[#2e2e38] transition hover:bg-[#fff066]">
             Track your compliance <ArrowRight className="size-3.5" />
           </Link>

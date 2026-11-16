@@ -60,7 +60,7 @@ export function FrameworkTabs({ frameworkId, overview }: { frameworkId: string; 
       <TabsContent value="overview">{overview}</TabsContent>
       <TabsContent value="citations">
         <Card>
-          {searchBox("Search obligation ID or requirement description…")}
+          {searchBox("Search obligation ID or obligation text…")}
           <CitationTable
             hideFramework
             query={{ frameworkId, q: s.q, page, sort: s.sort, dir: s.dir }}

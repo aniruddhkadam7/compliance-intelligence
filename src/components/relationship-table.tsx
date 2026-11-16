@@ -70,9 +70,9 @@ export function RelationshipTable({ kind, from, to, statuses }: { kind: "VERSION
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-border bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                <th className="w-[44%] px-4 py-2">{kind === "VERSION_TRANSITION" ? "Legacy section" : "Section A"}</th>
+                <th className="w-[44%] px-4 py-2">{kind === "VERSION_TRANSITION" ? "Legacy obligation" : "Obligation A"}</th>
                 <th className="px-3 py-2 text-center">{kind === "VERSION_TRANSITION" ? "Transition" : "Relationship"}</th>
-                <th className="w-[44%] px-4 py-2">{kind === "VERSION_TRANSITION" ? "Latest section" : "Section B"}</th>
+                <th className="w-[44%] px-4 py-2">{kind === "VERSION_TRANSITION" ? "Latest obligation" : "Obligation B"}</th>
               </tr>
             </thead>
             <tbody>

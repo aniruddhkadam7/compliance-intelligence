@@ -18,12 +18,12 @@ interface Step { icon: LucideIcon; title: string; sub: string; status: Availabil
 const STEPS: Step[] = [
   { icon: RefreshCcw, title: "Regulatory updates", sub: "Connectors detect new versions and publications at the official source", status: "now", href: "/updates" },
   { icon: ScanSearch, title: "AI analysis", sub: "Identify and interpret what changed in a regulation", status: "planned" },
-  { icon: Network, title: "Automatic control mapping", sub: "Map new requirements to existing controls. Today's mappings are prepared manually in Excel", status: "planned" },
+  { icon: Network, title: "Automatic control mapping", sub: "Map new obligations to existing controls. Today's mappings are prepared manually in Excel", status: "planned" },
 ];
 
 const CONNECTED: Step[] = [
   { icon: Network, title: "Framework relationships", sub: "See how frameworks map to each other", status: "now", href: "/mappings" },
-  { icon: ShieldCheck, title: "Control mapping", sub: "Your controls linked to requirements, from the manually prepared mapping workbook", status: "now", href: "/controls" },
+  { icon: ShieldCheck, title: "Control mapping", sub: "Your controls linked to obligations, from the manually prepared mapping workbook", status: "now", href: "/controls" },
   { icon: Gauge, title: "Control gaps", sub: "Met, partly met and open classification of your controls", status: "planned" },
 ];
 
@@ -108,8 +108,8 @@ export function Capabilities({ frameworks, frameworksHref, coverage }: Props) {
       body: (
         <div className="border-l-2 border-success pl-5">
           <Eyebrow>03 / Connected Compliance</Eyebrow>
-          <h3 className="mt-1.5 text-[19px] font-semibold leading-snug tracking-tight text-fg">Every requirement.<br />Connected to your controls.</h3>
-          <p className="mt-1.5 max-w-xl text-[12.5px] text-muted">See how frameworks relate and which requirements each of your controls is mapped to. Gap classification is planned; risk assessment is outside this tool&apos;s scope.</p>
+          <h3 className="mt-1.5 text-[19px] font-semibold leading-snug tracking-tight text-fg">Every obligation.<br />Connected to your controls.</h3>
+          <p className="mt-1.5 max-w-xl text-[12.5px] text-muted">See how frameworks relate and which obligations each of your controls is mapped to. Gap classification is planned; risk assessment is outside this tool&apos;s scope.</p>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             {CONNECTED.map((s) => <StepTile key={s.title} s={s} />)}
           </div>

@@ -67,7 +67,7 @@ export function UpdateCentre() {
     setRunning((r) => [...r, id]);
     try {
       const r = await apiSend<{ status: "UP_TO_DATE" | "IN_SOURCES" | "ALREADY_PREPARED" | "PREPARED"; version: string; sections?: number }>(`/api/connectors/${id}/import`);
-      if (r.status === "PREPARED") toast.success(`${name}: version ${r.version} downloaded`, { description: `${r.sections} sections prepared as an update. It now shows as Update available in Sources.` });
+      if (r.status === "PREPARED") toast.success(`${name}: version ${r.version} downloaded`, { description: `${r.sections} obligations prepared as an update. It now shows as Update available in Sources.` });
       else if (r.status === "IN_SOURCES") toast.info(`${name}: version ${r.version} is already offered`, { description: "Install it with Update in Sources." });
       else if (r.status === "ALREADY_PREPARED") toast.info(`${name}: version ${r.version} is already prepared as an update`);
       else toast.success(`${name}: the library already has the newest version (${r.version})`);

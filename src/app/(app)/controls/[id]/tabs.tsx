@@ -95,7 +95,7 @@ function Traceability({ c, initialQuery }: { c: ControlDetail; initialQuery: str
           <table className="w-full text-left">
             <thead className="sticky top-0 bg-surface-2">
               <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-                <th className="px-4 py-2">Framework</th><th className="px-3 py-2">Obligation ID</th><th className="px-3 py-2">Requirement description</th><th className="px-4 py-2">Mapping</th>
+                <th className="px-4 py-2">Framework</th><th className="px-3 py-2">Obligation ID</th><th className="px-3 py-2">Obligation text</th><th className="px-4 py-2">Mapping</th>
               </tr>
             </thead>
             <tbody>
@@ -291,7 +291,7 @@ function References({ c }: { c: ControlDetail }) {
     return <Card><EmptyState title="No direct framework references" description="The working sheet's standards crosswalk columns are empty for this control." /></Card>;
   return (
     <Card>
-      <CardHeader title="Direct standards references" description="Crosswalk columns stated per control on the “Metadata(CCFv2)” working sheet. These are separate from the ArC citation trace." />
+      <CardHeader title="Direct standards references" description="Crosswalk columns stated per control on the “Metadata(CCFv2)” working sheet. These are separate from the ArC obligation trace." />
       <table className="w-full text-left">
         <thead><tr className="border-b border-border bg-surface-2 text-[11px] font-semibold uppercase tracking-wide text-muted"><th className="px-4 py-2">Column</th><th className="px-3 py-2">References</th></tr></thead>
         <tbody>

@@ -21,7 +21,7 @@ export function VersionComparison({ c, previous, current }: { c: Comparison; pre
   const tabs: { id: Tab; label: string; n: number; show: boolean }[] = [
     { id: "domains", label: "Domains", n: c.domains.length, show: c.domains.length > 0 },
     { id: "segments", label: "Segments", n: c.segments.length, show: c.segments.length > 0 },
-    { id: "added", label: "New sections", n: c.identifiers.added.length, show: c.identifiers.comparable },
+    { id: "added", label: "New obligations", n: c.identifiers.added.length, show: c.identifiers.comparable },
     { id: "removed", label: "No longer present", n: c.identifiers.removed.length, show: c.identifiers.comparable },
     { id: "changed", label: "Reworded", n: c.identifiers.changed.length, show: c.identifiers.comparable },
   ];

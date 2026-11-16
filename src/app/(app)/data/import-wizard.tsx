@@ -45,8 +45,8 @@ interface Result { jobId: string; status: "COMPLETED" | "FAILED"; counts: Record
 const COUNT_LABEL: Record<string, string> = {
   controls: "Controls", testProcedures: "Test procedures (mapped)", procedureStatements: "Procedure statements on controls", procedureLinks: "Test procedure → obligation links", controlObligations: "Control → obligation mappings",
   evidence: "Evidence statements", crossFramework: "Framework relationships", versionTransitions: "Version transitions", libraryDocuments: "Library documents",
-  librarySections: "Library sections (obligations)", documentsRenumbered: "Documents renumbered", documentsAdded: "New documents", frameworks: "Library documents written",
-  sectionsWritten: "Library sections written", sectionsAdded: "Library sections added", sectionsUpdated: "Library sections updated", replacedControls: "Previous controls replaced",
+  librarySections: "Library obligations", documentsRenumbered: "Documents renumbered", documentsAdded: "New documents", frameworks: "Library documents written",
+  sectionsWritten: "Library obligations written", sectionsAdded: "Library obligations added", sectionsUpdated: "Library obligations updated", replacedControls: "Previous controls replaced",
   citations: "Obligations", requirements: "Mapping groups", reviews: "Unmapped review rows", frameworkReferences: "Framework references", rows: "Rows",
 };
 const STEPS = ["Upload", "Validate", "Review", "Confirm import"] as const;

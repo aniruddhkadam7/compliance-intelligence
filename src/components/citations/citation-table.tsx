@@ -51,7 +51,7 @@ export function CitationTable({
     const cols: ColumnDef<CitationRow, unknown>[] = [
       { id: "sectionId", header: "Source ID", size: 110, cell: ({ row }) => <Mono>{row.original.sourceSectionId}</Mono> },
       {
-        id: "sectionName", header: "Requirement description",
+        id: "sectionName", header: "Obligation text",
         cell: ({ row }) => (
           <div className="min-w-[280px]">
             <div className="font-medium text-fg">{row.original.sectionLabel}</div>

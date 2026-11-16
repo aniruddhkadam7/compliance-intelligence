@@ -12,7 +12,15 @@ import { KIND } from "../change-analytics/change-analytics";
 
 type Kind = keyof typeof KIND;
 interface Ref { short: string; version: string | null }
-interface Change { kind: Kind; from: string[]; to: string[]; explanation: string; before: { id: string; text: string | null }[]; after: { id: string; title: string; text: string }[] }
+/** An AI review of the change (see src/lib/ai/review-changes.ts): the nature of a modification, or why sections were linked. */
+interface Review { by: "AI"; model: string; nature?: "EDITORIAL" | "SUBSTANTIVE" | "REASSIGNED"; reason: string }
+interface Change { kind: Kind; from: string[]; to: string[]; explanation: string; review?: Review; before: { id: string; text: string | null }[]; after: { id: string; title: string; text: string }[] }
+
+const NATURE = {
+  EDITORIAL: { label: "Wording only", tone: "neutral" },
+  SUBSTANTIVE: { label: "Obligation changed", tone: "warning" },
+  REASSIGNED: { label: "Different obligation", tone: "danger" },
+} as const;
 interface Detail { previous: Ref | null; current: Ref | null; counts: Partial<Record<Kind, number>> | null; summary: string | null; relations: Change[] }
 
 const ORDER: Kind[] = ["ADDED", "MODIFIED", "RENUMBERED", "SPLIT", "COMBINED", "REMOVED"];
@@ -43,6 +51,8 @@ export function VersionChanges({ ingestionId }: { ingestionId: string }) {
   const first = (r: Change) => (r.kind === "REMOVED" ? r.from[0] : r.to[0]) ?? "";
   const list = d.relations.filter((r) => r.kind === active).sort((x, y) => byDocumentOrder(first(x), first(y)));
   const [summary, ...highlights] = (d.summary ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const modified = d.relations.filter((r) => r.kind === "MODIFIED");
+  const nature = (n: keyof typeof NATURE) => modified.filter((r) => r.review?.nature === n).length;
 
   return (
     <div className="rounded-md border border-border bg-surface p-3 text-xs">
@@ -57,13 +67,16 @@ export function VersionChanges({ ingestionId }: { ingestionId: string }) {
         {[...ORDER, "UNCHANGED" as Kind].filter((k) => (counts[k] ?? 0) > 0).map((k) => (
           <span key={k} className="inline-flex items-center gap-1.5 rounded border border-border px-2 py-0.5">
             <span className="size-2 rounded-full" style={{ background: KIND[k].color }} />{KIND[k].label} <b className="tabular text-fg">{formatNumber(counts[k] ?? 0)}</b>
+            {k === "MODIFIED" && modified.some((r) => r.review?.nature) && (
+              <span className="text-muted">({[nature("SUBSTANTIVE") && `${nature("SUBSTANTIVE")} obligation changed`, nature("EDITORIAL") && `${nature("EDITORIAL")} wording only`, nature("REASSIGNED") && `${nature("REASSIGNED")} different requirement`].filter(Boolean).join(", ")})</span>
+            )}
           </span>
         ))}
       </div>
 
       {summary && (
         <div className="mt-3">
-          <p className="text-fg-2">{summary.startsWith("AI change summary unavailable") ? "No written summary is available for this update; the section changes are listed below." : summary}</p>
+          <p className="text-fg-2">{summary.startsWith("AI change summary unavailable") ? "No written summary is available for this update; the obligation changes are listed below." : summary}</p>
           {highlights.length > 0 && <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-fg-2">{highlights.map((h) => <li key={h}>{h.replace(/^•\s*/, "")}</li>)}</ul>}
         </div>
       )}
@@ -89,8 +102,11 @@ export function VersionChanges({ ingestionId }: { ingestionId: string }) {
                     <span className="font-mono font-semibold text-fg">{ids.join(", ")}</span>
                     {(r.kind === "RENUMBERED" || r.kind === "SPLIT" || r.kind === "COMBINED") && <span className="text-muted">was {r.from.join(", ")}</span>}
                     <Badge tone={KIND[r.kind].tone}>{KIND[r.kind].label}</Badge>
+                    {r.review?.nature && <Badge tone={NATURE[r.review.nature].tone}>{NATURE[r.review.nature].label}</Badge>}
+                    {r.review && !r.review.nature && <Badge tone="info" title={`Linked by AI review (${r.review.model}); verify before relying on it`}>AI-matched</Badge>}
                     {r.kind !== "ADDED" && r.kind !== "REMOVED" && <span className="text-subtle">{r.explanation}</span>}
                   </div>
+                  {r.review?.nature && <p className="mt-0.5 text-muted"><span className="font-medium text-fg-2">AI review:</span> {r.review.reason} <span className="text-subtle">· verify before relying on it</span></p>}
                   {title && <div className="mt-0.5 font-medium text-fg-2">{title}</div>}
                   {r.kind === "REMOVED"
                     ? before && <p className="mt-0.5 text-muted line-through decoration-danger/50">{clip(before, 260)}</p>

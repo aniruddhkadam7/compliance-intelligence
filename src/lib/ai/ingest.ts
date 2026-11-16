@@ -16,6 +16,7 @@ import { analyseWorkbook } from "./sheets";
 import { consolidationOf, looksLikeLegalAct, parseLegalAct } from "./legal-act";
 import { idKey, refineWithSemantics, relateVersions, relationCounts, type Relation, type RelationKind } from "@/lib/sources/relations";
 import { cosine, embed } from "./embeddings";
+import { natureCounts, reviewRelations } from "./review-changes";
 
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 
@@ -354,6 +355,7 @@ async function finalize(id: string) {
   // Section relations (unchanged / modified / renumbered / split / combined / added / removed) for review and impact.
   let relations = cmp?.relations ?? [];
   let semantic: { pairs: number; note: string } | null = null;
+  let review: { note: string; matched: number; natures: ReturnType<typeof natureCounts> } | null = null;
   if (cmp && cmp.comparison.identifiers.comparable) {
     // Identifiers and wording first; then meaning (embeddings) for sections whose identifier changed.
     try {
@@ -363,6 +365,11 @@ async function finalize(id: string) {
     } catch (e) {
       semantic = { pairs: 0, note: `Semantic matching unavailable: ${e instanceof Error ? e.message : String(e)}` };
     }
+    // AI review where rules cannot decide: successors of unmatched sections, and the nature of each modification.
+    const reviewed = await reviewRelations(relations, cmp.prev, cmp.cur);
+    relations = reviewed.relations;
+    review = { note: reviewed.stats.note, matched: reviewed.stats.matched, natures: natureCounts(reviewed.relations) };
+    if (reviewed.stats.usage) usage = addUsage(usage, reviewed.stats.usage);
   }
   const baseVersion = cmp ? (await prisma.framework.findUnique({ where: { id: cmp.base.id }, select: { versionLabel: true } }))?.versionLabel ?? null : null;
   let summary: string | null = null;
@@ -377,7 +384,7 @@ async function finalize(id: string) {
   }
   // The previous version's text and domains are kept with the comparison, so it stays readable even if that
   // version is later removed from the library.
-  const analysis = cmp ? { base: { ...cmp.base, version: baseVersion }, counts: relationCounts(relations), relations, semantic, previous: snapshot(cmp.prev), current: { domains: snapshot(cmp.cur).domains } } : null;
+  const analysis = cmp ? { base: { ...cmp.base, version: baseVersion }, counts: relationCounts(relations), relations, semantic, review, previous: snapshot(cmp.prev), current: { domains: snapshot(cmp.cur).domains } } : null;
   return prisma.aiIngestion.update({ where: { id }, data: { status: "READY", summary, usage: json(usage), analysis: analysis ? json(analysis) : undefined } });
 }
 

@@ -106,7 +106,7 @@ export function CitationDetailSheet({ citationId, onClose, onOpen }: { citationI
                 { label: "Framework", value: <Link href={`/frameworks/${data.framework.id}`} className="text-accent hover:underline">{data.framework.short}</Link> },
                 { label: "Framework version", value: data.framework.versionLabel, hint: "Derived from the framework name" },
                 { label: "Framework ID", value: <Mono>{data.framework.sourceId}</Mono> },
-                { label: "Requirement title", value: data.sectionPath[data.sectionPath.length - 1] },
+                { label: "Obligation title", value: data.sectionPath[data.sectionPath.length - 1] },
                 { label: "Framework full name", value: data.authSource },
               ]}
             />
@@ -123,7 +123,7 @@ export function CitationDetailSheet({ citationId, onClose, onOpen }: { citationI
           </section>
 
           <section className="p-5">
-            <SectionTitle>Requirement description</SectionTitle>
+            <SectionTitle>Obligation text</SectionTitle>
             <div className="rounded-md border border-border bg-surface-2 p-3">
               <LongText text={data.sectionText} lines={10} />
             </div>
@@ -132,7 +132,7 @@ export function CitationDetailSheet({ citationId, onClose, onOpen }: { citationI
           {onOpen && (
             <>
               <Related title="Version transitions (supplied)" icon={<GitCompareArrows className="size-3.5" />} items={data.related.filter((r) => r.kind === "VERSION_TRANSITION")} onOpen={onOpen} />
-              <Related title="Related sections in other documents (supplied)" icon={<Network className="size-3.5" />} items={data.related.filter((r) => r.kind === "CROSS_FRAMEWORK")} onOpen={onOpen} />
+              <Related title="Related obligations in other documents (supplied)" icon={<Network className="size-3.5" />} items={data.related.filter((r) => r.kind === "CROSS_FRAMEWORK")} onOpen={onOpen} />
             </>
           )}
 

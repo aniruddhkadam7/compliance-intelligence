@@ -51,7 +51,7 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
           </CardBody>
         </Card>
         <Card>
-          <CardHeader title="Source sections" description="Top-level sections parsed from “Source Section Name” (first level after the source title)" />
+          <CardHeader title="Domains" description="Top-level groups of obligations, parsed from “Source Section Name” (first level after the source title)" />
           <CardBody>
             <BarList items={fw.sections.slice(0, 18).map((s) => ({ label: s.section, count: s.citations, href: `/frameworks/${fw.id}?tab=citations&q=${encodeURIComponent(s.section)}` }))} />
             {fw.sections.length > 18 && <p className="mt-3 text-[11px] text-muted">Showing 18 of {fw.sections.length} sections.</p>}
@@ -105,7 +105,7 @@ export default async function FrameworkPage({ params }: { params: Promise<{ id: 
       <StatStrip
         className="mb-4 xl:grid-cols-4"
         items={[
-          { label: "Regulatory obligations", value: fw._count.citations, sub: "Requirements in this framework" },
+          { label: "Regulatory obligations", value: fw._count.citations, sub: "Obligations in this framework" },
           { label: "Mapping coverage", value: formatPercent(fw._count.citations ? fw.totals.mapped / fw._count.citations : 0), tone: "accent", sub: `${formatNumber(fw.totals.mapped)} obligations with a CCF control` },
           { label: "Unmapped obligations", value: fw._count.citations - fw.totals.mapped, tone: "warning", sub: "No CCF control mapped" },
           { label: "Mapped CCF controls", value: fw.totals.controls, sub: "Controls linked to this framework" },

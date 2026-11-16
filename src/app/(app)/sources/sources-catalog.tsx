@@ -143,7 +143,7 @@ export interface ChangeSummary {
 }
 
 function SummaryCard({ s }: { s: ChangeSummary }) {
-  const rows: [string, string][] = [["Affected sections", s.affected], ["Domains", s.domains], ["Merged", s.merged], ["Removed", s.removed]];
+  const rows: [string, string][] = [["Affected obligations", s.affected], ["Domains", s.domains], ["Merged", s.merged], ["Removed", s.removed]];
   return (
     <div className="space-y-1.5 py-1 text-left">
       <div className="text-[12px] font-semibold">{s.legacy} → {s.latest}</div>
@@ -165,14 +165,14 @@ function ComparisonCard({ from, to, c }: { from: string; to: string; c: NonNulla
     <div className="space-y-1.5 py-1 text-left">
       <div className="text-[12px] font-semibold">{from} → {to}</div>
       {c.comparable ? (
-        <p>{n(c.added, "section")} added, {n(c.removed, "section")} removed, {n(c.changed, "section")} reworded; {n(c.unchanged, "section")} unchanged.</p>
+        <p>{n(c.added, "obligation")} added, {n(c.removed, "obligation")} removed, {n(c.changed, "obligation")} reworded; {n(c.unchanged, "obligation")} unchanged.</p>
       ) : (
-        <p>{formatNumber(c.counts.current)} sections in {to}, {formatNumber(c.counts.previous)} in {from}. The two versions number their sections differently, so they are not compared one to one.</p>
+        <p>{formatNumber(c.counts.current)} obligations in {to}, {formatNumber(c.counts.previous)} in {from}. The two versions number their obligations differently, so they are not compared one to one.</p>
       )}
       {added.length > 0 && <p><span className="font-semibold">New domains: </span>{added.join(", ")}</p>}
       {removed.length > 0 && <p><span className="font-semibold">Domains removed: </span>{removed.join(", ")}</p>}
       {renamed.length > 0 && <p><span className="font-semibold">Renamed: </span>{renamed.map(([o, x]) => `${o} → ${x}`).join(", ")}</p>}
-      <p className="text-[10.5px] opacity-70">Compared section by section from both versions in the library.</p>
+      <p className="text-[10.5px] opacity-70">Compared obligation by obligation from both versions in the library.</p>
     </div>
   );
 }
@@ -183,7 +183,7 @@ function FindingCard({ from, f }: { from: string | null; f: SourceRow["updates"]
     <div className="space-y-1.5 py-1 text-left">
       <div className="text-[12px] font-semibold">{from ? `${from} → ` : ""}{f.newValue}</div>
       <p>{f.summary || f.title}</p>
-      <p className="text-[10.5px] opacity-70">Detected by {f.connector} on {formatDate(f.detectedAt)}. The new version is not in the library yet, so its sections cannot be compared.</p>
+      <p className="text-[10.5px] opacity-70">Detected by {f.connector} on {formatDate(f.detectedAt)}. The new version is not in the library yet, so its obligations cannot be compared.</p>
     </div>
   );
 }
@@ -195,7 +195,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const UPDATE_STEPS = (names: string[]): ProgressStep[] => [
   { icon: Globe, title: "Scanning publisher sources", detail: "Checking the NIST, CIS and ISO official sites for new releases" },
   { icon: Download, title: "Downloading new versions", detail: `${names.length} official document${names.length === 1 ? "" : "s"} retrieved from the publishers` },
-  { icon: ScanSearch, title: "Extracting and verifying", detail: "Sections, identifiers and requirement text checked against the official document" },
+  { icon: ScanSearch, title: "Extracting and verifying", detail: "Obligations, identifiers and text checked against the official document" },
   { icon: Library, title: "Updating the library", detail: "New versions installed; previous versions kept for custom control mappings" },
 ];
 
@@ -281,7 +281,7 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
       return (
         <div className="space-y-1.5 py-1 text-left">
           <div className="text-[12px] font-semibold">{r.d.short} → {r.latest}</div>
-          <p>{r.offer.fromConnector ? `Downloaded in full from the publisher by ${r.offer.fromConnector}.` : "Uploaded to the Source Document Library and released by an admin."} The section-by-section comparison is shown once it is installed with Update.</p>
+          <p>{r.offer.fromConnector ? `Downloaded in full from the publisher by ${r.offer.fromConnector}.` : "Uploaded to the Source Document Library and released by an admin."} The obligation-by-obligation comparison is shown once it is installed with Update.</p>
         </div>
       );
     return null;

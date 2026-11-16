@@ -23,8 +23,8 @@ interface Facets {
 const FIELDS = [
   { value: "all", label: "All fields" },
   { value: "sectionId", label: "Source ID" },
-  { value: "sectionName", label: "Requirement description" },
-  { value: "text", label: "Full requirement text" },
+  { value: "sectionName", label: "Obligation text" },
+  { value: "text", label: "Full obligation text" },
 ];
 
 export function CitationExplorer() {
@@ -46,13 +46,13 @@ export function CitationExplorer() {
     <Page>
       <PageHeader
         title={TERMS.obligations}
-        description="Every regulatory and legal requirement in the global document library, identified by its unique Source ID. Independent of any custom control data."
+        description="Every regulatory and legal obligation in the global document library, identified by its unique Source ID. Independent of any custom control data."
       />
       <Card>
         <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
           <div className="relative min-w-[260px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Source ID or requirement description…" className="pl-8" aria-label="Search obligations" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Source ID or obligation text…" className="pl-8" aria-label="Search obligations" />
           </div>
           <Select value={s.field} onChange={(v) => set({ field: v })} options={FIELDS} aria-label="Search field" />
           <Select

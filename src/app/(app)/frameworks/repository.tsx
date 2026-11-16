@@ -161,7 +161,7 @@ export function FrameworkRepository() {
           {s.publisher && <Badge tone="info" className="gap-1">Publisher: {s.publisher}<button aria-label="Clear publisher filter" onClick={() => set({ publisher: "" })}><X className="size-3" /></button></Badge>}
           {active && <Button variant="ghost" size="sm" onClick={() => { setQ(""); set({ q: "", type: "", jurisdiction: "", group: "", publisher: "", versions: "" }); }}><X /> Clear</Button>}
         </div>
-        <div className="px-4 py-2 text-xs text-muted tabular">{rows.length} versions · {formatNumber(rows.reduce((t, r) => t + r.citations, 0))} obligations<span className="text-muted"> · </span><span className="text-accent">click any framework to inspect its sections and mapped controls</span></div>
+        <div className="px-4 py-2 text-xs text-muted tabular">{rows.length} versions · {formatNumber(rows.reduce((t, r) => t + r.citations, 0))} obligations<span className="text-muted"> · </span><span className="text-accent">click any framework to inspect its obligations and mapped controls</span></div>
         <DataTable
           columns={columns}
           data={data ? rows : undefined}

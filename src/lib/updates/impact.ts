@@ -46,7 +46,10 @@ export async function generateProposals(ingestionId: string, actor: string) {
       if (rel.kind === "REMOVED") data.push({ ...base, action: "FLAG_REMOVED", citationId: old.id, reason: `${id} no longer exists in the new version. ${rel.explanation} Review whether this control still needs a requirement in the new version.` });
       else for (const t of rel.to) {
         const target = newByKey.get(idKey(t));
-        if (target) data.push({ ...base, action: "ADD", citationId: target, reason: `Mapped to ${id} in the previous version. ${rel.explanation}` });
+        // The AI review's view of a modified section (wording only, or the obligation changed), when there is one.
+        const nature = (rel as Relation & { review?: { nature?: string; reason: string } }).review;
+        const aiNote = nature?.nature ? ` AI review: ${nature.nature === "EDITORIAL" ? "wording change only" : nature.nature === "SUBSTANTIVE" ? "the obligation changed" : "the identifier now names a different requirement"} (${nature.reason}).` : "";
+        if (target) data.push({ ...base, action: "ADD", citationId: target, reason: `Mapped to ${id} in the previous version. ${rel.explanation}${aiNote}` });
       }
     }
   }

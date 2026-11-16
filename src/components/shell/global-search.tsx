@@ -16,7 +16,7 @@ interface Hit {
 }
 
 const ICON = { framework: Library, citation: Quote, control: ShieldCheck, requirement: ListTree };
-const GROUP = { framework: "Frameworks", control: "CCF controls", requirement: "Requirements", citation: "Regulatory obligations" };
+const GROUP = { framework: "Frameworks", control: "CCF controls", requirement: "Mapping groups", citation: "Regulatory obligations" };
 
 export function GlobalSearch() {
   const navigate = useNavigate();

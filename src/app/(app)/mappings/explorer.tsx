@@ -57,7 +57,7 @@ export function MappingExplorer() {
 
   return (
     <Page>
-      <PageHeader title={TERMS.frameworkMapping} description="How the frameworks relate: requirement-to-requirement relationships stated in the supplied relationship files. Nothing is inferred." />
+      <PageHeader title={TERMS.frameworkMapping} description="How the frameworks relate: obligation-to-obligation relationships stated in the supplied relationship files. Nothing is inferred." />
       <Tabs value={view} onValueChange={(v) => set({ view: v })}>
         <TabsList className="mb-4">
           <TabsTrigger value="graph"><Share2 /> Relationship Graph</TabsTrigger>

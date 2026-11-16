@@ -42,7 +42,7 @@ export function ImportHistory() {
         const c = row.original.counts;
         if (!c) return <span className="text-subtle">—</span>;
         // Imported: records written (counted from the database). Otherwise: what the file holds; nothing was written.
-        const parts = ([["controls", "controls"], ["testProcedures", "test procedures"], ["crossFramework", "relationships"], ["librarySections", "library sections"], ["sectionsWritten", "library sections"], ["citations", "obligations"], ["rows", "rows"]] as const)
+        const parts = ([["controls", "controls"], ["testProcedures", "test procedures"], ["crossFramework", "relationships"], ["librarySections", "library obligations"], ["sectionsWritten", "library obligations"], ["citations", "obligations"], ["rows", "rows"]] as const)
           .filter(([k]) => c[k] != null).map(([k, l]) => `${formatNumber(c[k])} ${l}`);
         return <span className="text-xs text-fg-2 tabular">{row.original.status === "COMPLETED" ? "Written: " : "In file: "}{parts.join(" · ") || "—"}</span>;
       },

@@ -1,20 +1,32 @@
 "use client";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useQuery } from "@tanstack/react-query";
-import { Bell, CheckCircle2, Loader2, LogOut, Menu, Moon, Sun, User, X } from "lucide-react";
+import { Bell, CheckCheck, CheckCircle2, Loader2, LogOut, Menu, Moon, Sun, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator, DropdownTrigger } from "@/components/ui/dropdown";
 import { Badge } from "@/components/ui/badge";
-import { apiGet } from "@/lib/client/api";
-import { formatDate, formatRelative, truncate } from "@/lib/utils";
+import { apiGet, apiSend } from "@/lib/client/api";
+import { cn, formatDate, formatRelative, truncate } from "@/lib/utils";
 import { EyLogo } from "./ey-logo";
 import { GlobalSearch } from "./global-search";
 import { dismissImportJob, useImportJobs } from "@/lib/client/import-jobs";
 
+/** Minutes and seconds since `since`, for long steps. */
+const elapsed = (since: number, now: number) => { const s = Math.max(0, Math.round((now - since) / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+
 function ImportStatus() {
   const jobs = useImportJobs();
+  // A clock for the elapsed time, ticking only while a long step is running.
+  const [now, setNow] = useState(() => Date.now());
+  const comparing = jobs.some((j) => j.state === "reading" && j.phase === "comparing");
+  useEffect(() => {
+    if (!comparing) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [comparing]);
   if (!jobs.length) return null;
   return (
     <div className="hidden items-center gap-1.5 md:flex">
@@ -22,7 +34,11 @@ function ImportStatus() {
         <span key={j.id} className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 py-0.5 pl-2 pr-1 text-xs">
           {j.state === "reading" ? <Loader2 className="size-3.5 animate-spin text-accent" /> : <CheckCircle2 className={j.state === "ready" ? "size-3.5 text-success" : "size-3.5 text-danger"} />}
           <Link href={j.href} className="text-fg hover:underline">
-            {j.state === "reading" ? `Reading ${truncate(j.name, 24)} · ${Math.min(j.done + 1, j.total)}/${j.total}` : j.state === "ready" ? `${truncate(j.name, 24)} ready` : `${truncate(j.name, 24)} failed`}
+            {j.state === "reading"
+              ? j.phase === "comparing"
+                ? `Comparing ${truncate(j.name, 24)} with the previous version · ${elapsed(j.since, now)}`
+                : `Reading ${truncate(j.name, 24)} · part ${Math.min(j.done + 1, j.total)} of ${j.total}`
+              : j.state === "ready" ? `${truncate(j.name, 24)} ready for review` : `${truncate(j.name, 24)} failed`}
           </Link>
           {j.state !== "reading" && <button type="button" aria-label="Dismiss" onClick={() => dismissImportJob(j.id)} className="cursor-pointer rounded p-0.5 text-muted hover:text-fg"><X className="size-3" /></button>}
         </span>
@@ -34,13 +50,15 @@ function ImportStatus() {
 interface NotificationLite {
   id: string; kind: string; framework: string; fromVersion: string | null; version: string | null;
   date: string | null; dateLabel: string; status: string; detail: string | null; href: string;
+  /** This user has opened it or marked it read; it stays listed, dimmed, and is not counted. */
+  read: boolean;
 }
 
 const KIND_LABEL: Record<string, string> = {
-  UPDATE_AVAILABLE: "New version", READY_TO_INSTALL: "New version", VERSION_CHANGE: "Version change", NEW_PUBLICATION: "New publication",
+  UPDATE_AVAILABLE: "New version", READY_TO_INSTALL: "New version", DRAFT_READY: "New version uploaded", VERSION_CHANGE: "Version change", NEW_PUBLICATION: "New publication",
   CONTENT_CHANGE: "Content change", NEW_INFORMATIVE_REFERENCE: "New reference", CONNECTOR_ERROR: "Connector",
 };
-const STATUS_TONE: Record<string, "warning" | "info" | "danger" | "accent"> = { "Update available": "warning", "Ready to install": "accent", "To review": "info", Error: "danger" };
+const STATUS_TONE: Record<string, "warning" | "info" | "danger" | "accent"> = { "Update available": "warning", "Ready to install": "accent", "Ready for review": "info", "To review": "info", Error: "danger" };
 
 export function Topbar({ user, role, onMenu }: { user: string; role: string; onMenu: () => void }) {
   const router = useRouter();
@@ -48,9 +66,18 @@ export function Topbar({ user, role, onMenu }: { user: string; role: string; onM
   // Same backend state as Sources and the Connector page; refreshed when the panel opens and every minute.
   const { data, refetch } = useQuery({
     queryKey: ["updates", "notifications"],
-    queryFn: () => apiGet<{ items: NotificationLite[]; total: number }>("/api/notifications"),
+    queryFn: () => apiGet<{ items: NotificationLite[]; total: number; unread: number }>("/api/notifications"),
     refetchInterval: 60_000,
   });
+  const unread = data?.unread ?? 0;
+  // Read state is per user and changes nothing else; the list refreshes after it is saved.
+  const markRead = async (ids: string[] | "all") => {
+    try { await apiSend("/api/notifications", { ids }); } finally { void refetch(); }
+  };
+  const open = (n: NotificationLite) => {
+    if (!n.read) void markRead([n.id]);
+    router.push(n.href);
+  };
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -69,22 +96,29 @@ export function Topbar({ user, role, onMenu }: { user: string; role: string; onM
         <ImportStatus />
         <Dropdown onOpenChange={(open) => { if (open) void refetch(); }}>
           <DropdownTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label={`Notifications${data?.total ? ` (${data.total})` : ""}`} className="relative">
+            <Button variant="ghost" size="icon-sm" aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`} className="relative">
               <Bell />
-              {!!data?.total && <span className="absolute -right-0.5 -top-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-warning px-0.5 text-[9px] font-semibold leading-none text-white tabular">{data.total}</span>}
+              {unread > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-3.5 min-w-3.5 place-items-center rounded-full bg-warning px-0.5 text-[9px] font-semibold leading-none text-white tabular">{unread}</span>}
             </Button>
           </DropdownTrigger>
           <DropdownContent className="w-[400px] p-0">
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <span className="text-[13px] font-semibold">Framework updates</span>
-              <Badge tone={data?.total ? "warning" : "neutral"}>{data?.total ?? 0} need attention</Badge>
+              <span className="flex items-center gap-2 text-[13px] font-semibold">Framework updates <Badge tone={unread ? "warning" : "neutral"}>{unread} unread</Badge></span>
+              {unread > 0 && (
+                <button type="button" onClick={(e) => { e.preventDefault(); void markRead("all"); }} className="flex cursor-pointer items-center gap-1 text-xs font-medium text-accent hover:underline">
+                  <CheckCheck className="size-3.5" /> Mark all read
+                </button>
+              )}
             </div>
             <div className="max-h-[380px] overflow-y-auto p-1">
               {!data?.items.length && <p className="px-3 py-6 text-center text-xs text-muted">No framework updates, findings or connector errors.</p>}
               {data?.items.map((n) => (
-                <DropdownItem key={n.id} onSelect={() => router.push(n.href)} className="flex-col items-stretch gap-0.5 py-2">
+                <DropdownItem key={n.id} onSelect={() => open(n)} className={cn("flex-col items-stretch gap-0.5 py-2", n.read && "opacity-60")}>
                   <span className="flex items-center justify-between gap-2">
-                    <span className="truncate text-[13px] font-medium text-fg">{n.framework}</span>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {!n.read && <span className="size-1.5 shrink-0 rounded-full bg-warning" aria-label="Unread" />}
+                      <span className={cn("truncate text-[13px] text-fg", n.read ? "font-normal" : "font-semibold")}>{n.framework}</span>
+                    </span>
                     <Badge tone={STATUS_TONE[n.status] ?? "neutral"} className="shrink-0">{n.status}</Badge>
                   </span>
                   <span className="text-[12px] text-fg-2">

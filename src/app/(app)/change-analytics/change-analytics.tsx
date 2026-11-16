@@ -67,8 +67,8 @@ function sectionChanges(d: Detail, side: "removed" | "added") {
 const TABS = (d: Detail) => [
   ["controls", `Affected controls (${d.controls.length})`],
   ["procedures", `Changed test procedures (${d.changedTestProcedures})`],
-  ["removed", `Sections removed (${sectionChanges(d, "removed").length})`],
-  ["added", `Sections added (${sectionChanges(d, "added").length})`],
+  ["removed", `Obligations removed (${sectionChanges(d, "removed").length})`],
+  ["added", `Obligations added (${sectionChanges(d, "added").length})`],
   ["analytics", "Analytics"],
 ] as const;
 
@@ -76,7 +76,7 @@ const APPROVE_STEPS = (d: Detail, names: string[]): ProgressStep[] => {
   const tps = d.controls.filter((c) => names.includes(c.controlName)).reduce((n, c) => n + c.changed.length, 0);
   return [
     { icon: ClipboardCheck, title: "Reading test procedures", detail: `${formatNumber(tps)} changed test procedure${tps === 1 ? "" : "s"} across ${names.length} control${names.length === 1 ? "" : "s"}` },
-    { icon: GitCompareArrows, title: `Matching to ${d.family} ${d.current}`, detail: "Each procedure matched to the sections of the new version" },
+    { icon: GitCompareArrows, title: `Matching to ${d.family} ${d.current}`, detail: "Each procedure matched to the obligations of the new version" },
     { icon: Link2, title: "Re-mapping controls", detail: `${d.family} ${d.previous} links retired, ${d.current} links recorded` },
     { icon: ShieldCheck, title: "Mapping complete", detail: `${names.length === 1 ? names[0] : `${names.length} controls`} now point${names.length === 1 ? "s" : ""} to ${d.family} ${d.current}` },
   ];
@@ -232,7 +232,7 @@ function FilterBar({ d, f, set, shown }: { d: Detail; f: Filters; set: Set_; sho
     <Card className="flex flex-wrap items-center gap-2 p-3">
       <div className="relative min-w-[240px] flex-1">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search control, title or section (e.g. ID.AM-03)…" className="pl-8" aria-label="Search controls and sections" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search control, title or obligation (e.g. ID.AM-03)…" className="pl-8" aria-label="Search controls and obligations" />
       </div>
       <Select
         value={f.status} onChange={(v) => set({ status: v, control: "" })} allLabel="Any approval status" aria-label="Approval status"
@@ -304,9 +304,9 @@ function UpdateView({ d: full, tab, control, filters, set }: { d: Detail; tab: s
         items={[
           { label: "Affected controls", value: d.affectedControls, tone: d.affectedControls ? "warning" : "default", sub: `of ${formatNumber(d.totalControls)} custom controls`, onClick: () => go({ tab: "controls" }), active: tab === "controls" },
           { label: "Test procedures changed", value: full.changedTestProcedures, tone: full.changedTestProcedures ? "warning" : "default", sub: `of ${formatNumber(d.totalTestProcedures)}`, onClick: () => go({ tab: "procedures" }), active: tab === "procedures" },
-          { label: "Test procedures unchanged", value: d.totalTestProcedures - full.changedTestProcedures, tone: "success", sub: "Same sections in both versions · see Analytics", onClick: () => go({ tab: "analytics" }), active: tab === "analytics" },
-          { label: "Sections removed from mappings", value: d.removedSections, hint: "Distinct sections of the previous version that changed test procedures no longer map to", onClick: () => go({ tab: "removed" }), active: tab === "removed" },
-          { label: "Sections added to mappings", value: d.addedSections, hint: "Distinct sections of the updated version that changed test procedures now map to", onClick: () => go({ tab: "added" }), active: tab === "added" },
+          { label: "Test procedures unchanged", value: d.totalTestProcedures - full.changedTestProcedures, tone: "success", sub: "Same obligations in both versions · see Analytics", onClick: () => go({ tab: "analytics" }), active: tab === "analytics" },
+          { label: "Obligations removed from mappings", value: d.removedSections, hint: "Distinct obligations of the previous version that changed test procedures no longer map to", onClick: () => go({ tab: "removed" }), active: tab === "removed" },
+          { label: "Obligations added to mappings", value: d.addedSections, hint: "Distinct obligations of the updated version that changed test procedures now map to", onClick: () => go({ tab: "added" }), active: tab === "added" },
         ]}
       />
 
@@ -335,7 +335,7 @@ function SectionList({ items, tone, onOpen }: { items: Sec[]; tone: "removed" | 
       {items.map((s) => (
         <li key={s.id}>
           <button
-            onClick={() => onOpen(s)} title="Open section details"
+            onClick={() => onOpen(s)} title="Open obligation details"
             className={cn("flex w-full items-baseline gap-2 rounded border px-2 py-1 text-left text-xs transition-colors",
               tone === "removed" ? "border-danger/25 bg-danger-soft/40 hover:bg-danger-soft/70" : "border-success/30 bg-success-soft/50 hover:bg-success-soft/80")}
           >
@@ -402,7 +402,7 @@ function ProcedurePanel({ d, panel, onClose, onSection }: { d: Detail; panel: Ex
           <section>
             <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Test procedure</div>
             <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-fg">{tp.text || "No description recorded."}</p>
-            <p className="mt-2 text-xs text-muted">The procedure does not change. Only the framework sections it maps to do.</p>
+            <p className="mt-2 text-xs text-muted">The procedure does not change. Only the framework obligations it maps to do.</p>
           </section>
           {([["removed", "Maps to now (removed)", tp.removed], ["added", "Will map to (added)", tp.added]] as const).map(([tone, label, items]) => (
             <section key={tone}>
@@ -443,7 +443,7 @@ function AffectedControls({ d, selected, set, approve, reject, reconsider, runni
   if (!d.controls.length)
     return filtered
       ? <Card><EmptyState icon={Search} title="No controls match" description="Change or clear the filters." /></Card>
-      : <Card><EmptyState icon={ListChecks} title="No custom controls are affected" description="No custom test procedure maps to different sections in this version." /></Card>;
+      : <Card><EmptyState icon={ListChecks} title="No custom controls are affected" description="No custom test procedure maps to different obligations in this version." /></Card>;
   const disabledWhy = d.status !== "UPDATED" ? "Apply the update in Sources first" : d.uploadedAfter ? "Already mapped to the new version" : !canWrite ? "Your role cannot approve mappings" : undefined;
   return (
     <div className="grid gap-4 xl:grid-cols-[420px_1fr]">
@@ -564,19 +564,19 @@ function SectionChanges({ d, side, set }: { d: Detail; side: "removed" | "added"
   const [open, setOpen] = useState<string | null>(null);
   const rows = useMemo(() => sectionChanges(d, side).sort((a, b) =>
     Number(inFamily(d, b.sec)) - Number(inFamily(d, a.sec)) || a.sec.doc.localeCompare(b.sec.doc) || a.sec.identifier.localeCompare(b.sec.identifier, undefined, { numeric: true })), [d, side]);
-  if (!rows.length) return <Card><EmptyState icon={ListChecks} title={`No sections ${side}`} description={side === "removed" ? "No changed test procedure stops mapping to a section." : "No changed test procedure starts mapping to a new section."} /></Card>;
+  if (!rows.length) return <Card><EmptyState icon={ListChecks} title={`No obligations ${side}`} description={side === "removed" ? "No changed test procedure stops mapping to an obligation." : "No changed test procedure starts mapping to a new obligation."} /></Card>;
   const removed = side === "removed";
   return (
     <Card>
       <CardHeader
-        title={removed ? `Sections removed from mappings · ${d.family} ${d.previous} and others` : `Sections added to mappings · ${d.family} ${d.current} and others`}
-        description={removed ? "Sections that changed test procedures map to now and no longer map to once approved." : "Sections that changed test procedures map to once approved."}
+        title={removed ? `Obligations removed from mappings · ${d.family} ${d.previous} and others` : `Obligations added to mappings · ${d.family} ${d.current} and others`}
+        description={removed ? "Obligations that changed test procedures map to now and no longer map to once approved." : "Obligations that changed test procedures map to once approved."}
       />
       <div className="max-h-[640px] overflow-auto">
         <table className="w-full text-left text-xs">
           <thead className="sticky top-0 bg-surface-2">
             <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted">
-              <th className="px-4 py-2">Section</th><th className="px-3 py-2">Title</th><th className="px-3 py-2">Framework</th><th className="px-4 py-2">Used by</th>
+              <th className="px-4 py-2">Obligation</th><th className="px-3 py-2">Title</th><th className="px-3 py-2">Framework</th><th className="px-4 py-2">Used by</th>
             </tr>
           </thead>
           <tbody>
@@ -585,7 +585,7 @@ function SectionChanges({ d, side, set }: { d: Detail; side: "removed" | "added"
               return (
                 <tr key={sec.id} className="border-b border-border align-top last:border-0">
                   <td className="whitespace-nowrap px-4 py-2">
-                    <button onClick={() => setOpen(sec.id)} title="Open section details" className={cn("rounded border px-1.5 py-0.5 font-mono font-medium text-fg transition-colors", removed ? "border-danger/25 bg-danger-soft/40 line-through decoration-danger/40 hover:bg-danger-soft/70" : "border-success/30 bg-success-soft/50 hover:bg-success-soft/80")}>{sec.identifier}</button>
+                    <button onClick={() => setOpen(sec.id)} title="Open obligation details" className={cn("rounded border px-1.5 py-0.5 font-mono font-medium text-fg transition-colors", removed ? "border-danger/25 bg-danger-soft/40 line-through decoration-danger/40 hover:bg-danger-soft/70" : "border-success/30 bg-success-soft/50 hover:bg-success-soft/80")}>{sec.identifier}</button>
                   </td>
                   <td className="max-w-[360px] px-3 py-2 text-muted"><div className="line-clamp-2">{sec.title}</div></td>
                   <td className="whitespace-nowrap px-3 py-2 text-fg-2">{sec.doc}</td>
@@ -620,7 +620,7 @@ function SectionChanges({ d, side, set }: { d: Detail; side: "removed" | "added"
 function ChangedProcedures({ d, set }: { d: Detail; set: Set_ }) {
   const [limit, setLimit] = useState(PAGE);
   const rows = d.controls.flatMap((c) => c.changed.map((tp) => ({ control: c.controlName, tp })));
-  if (!rows.length) return <Card><EmptyState icon={ListChecks} title="No test procedures changed" description="Every test procedure maps to the same sections in both versions." /></Card>;
+  if (!rows.length) return <Card><EmptyState icon={ListChecks} title="No test procedures changed" description="Every test procedure maps to the same obligations in both versions." /></Card>;
   return (
     <Card>
       <div className="max-h-[640px] overflow-auto">

@@ -41,11 +41,11 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ i
 
   // Supplied transitions take precedence; otherwise the structural comparison of both loaded versions.
   const changeCategories: [string, string | null, string?][] = [
-    ["New sections introduced", hasTransitions ? String(d.transitions.ADDED ?? 0) : cmp ? String(cmp.added.length) : null],
-    ["Existing sections modified", hasTransitions ? String(d.transitions.MODIFIED ?? 0) : cmp ? String(cmp.changed.length) : null],
-    ["Sections removed", hasTransitions ? String(d.transitions.REMOVED ?? 0) : cmp ? String(cmp.removed.length) : null],
-    ["Requirements consolidated", hasTransitions ? String(d.transitions.COMBINED ?? 0) : null, "Needs a legacy-to-latest mapping file"],
-    ["Requirements split", hasTransitions ? String(d.transitions.SPLIT ?? 0) : null, "Needs a legacy-to-latest mapping file"],
+    ["New obligations introduced", hasTransitions ? String(d.transitions.ADDED ?? 0) : cmp ? String(cmp.added.length) : null],
+    ["Existing obligations modified", hasTransitions ? String(d.transitions.MODIFIED ?? 0) : cmp ? String(cmp.changed.length) : null],
+    ["Obligations removed", hasTransitions ? String(d.transitions.REMOVED ?? 0) : cmp ? String(cmp.removed.length) : null],
+    ["Obligations consolidated", hasTransitions ? String(d.transitions.COMBINED ?? 0) : null, "Needs a legacy-to-latest mapping file"],
+    ["Obligations split", hasTransitions ? String(d.transitions.SPLIT ?? 0) : null, "Needs a legacy-to-latest mapping file"],
     ["New domains", d.comparison ? String(d.comparison.domains.filter((x) => x.status === "ONLY_CURRENT").length) : null],
     ["Scope changes", null, "Summary to be supplied"],
     ["New regulatory expectations", null, "Summary to be supplied"],
@@ -122,9 +122,9 @@ export default async function SourceDetailPage({ params }: { params: Promise<{ i
               {hasTransitions ? (
                 <p className="text-xs text-muted">Counts come from the supplied legacy-to-latest mapping. <Link href="/change-analytics" className="text-accent hover:underline">Open in {TERMS.versionImpact}</Link></p>
               ) : d.comparison ? (
-                <p className="text-xs text-muted">Counts come from a structural comparison of both loaded versions (by section identifier). Consolidations and splits need a supplied legacy-to-latest mapping. <a href="#comparison" className="text-accent hover:underline">See the comparison</a></p>
+                <p className="text-xs text-muted">Counts come from a structural comparison of both loaded versions (by obligation identifier). Consolidations and splits need a supplied legacy-to-latest mapping. <a href="#comparison" className="text-accent hover:underline">See the comparison</a></p>
               ) : (
-                <Placeholder>Summary of the major changes from the previous version (new sections, revised requirements, retired content and scope changes). Content to follow.</Placeholder>
+                <Placeholder>Summary of the major changes from the previous version (new obligations, revised obligations, retired content and scope changes). Content to follow.</Placeholder>
               )}
             </CardBody>
           </Card>
