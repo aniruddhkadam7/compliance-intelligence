@@ -17,6 +17,7 @@ import { apiSend } from "@/lib/client/api";
 import { useUrlState } from "@/lib/client/hooks";
 import { APPLICABILITY_TAGS, BASIS_LABEL } from "@/lib/sources/applicability";
 import { CHECK_METHOD, UPDATE_CHECK } from "@/lib/updates/labels";
+import { updateRows } from "@/lib/sources/update-status";
 import { TERMS } from "@/lib/terms";
 import { cn, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
 import type { SourceRow } from "@/lib/queries/sources";
@@ -128,13 +129,6 @@ export interface DemoUpdate {
 /** An update a user can install from Sources: a demo framework update, or an uploaded version an admin released. */
 interface Offer { key: string; name: string; released: boolean; docId?: string; importId?: string; fromConnector?: string | null }
 
-/** True when `a` is a later version than `b` ("5.2.0" after "5.1.1"; "2.0" equals "2"). */
-const newerVersion = (a: string, b: string | null) => {
-  const n = (v: string | null) => ((v ?? "").match(/\d+(?:\.\d+)*/)?.[0] ?? "").split(".").map(Number);
-  const x = n(a), y = n(b);
-  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
-  return false;
-};
 
 /** The team's summary of a framework upgrade (Summary of changes workbook), shown on hover over the latest version. */
 export interface ChangeSummary {
@@ -215,29 +209,15 @@ export function SourcesCatalog({ docs, demo, dates, summaries, role }: { docs: S
 
   // One row per document. For a demo framework the row is the version the platform is on: the previous one until
   // its update is applied, then the new one. A document with an uploaded new version is offered once an admin releases it.
+  // Which rows have an update is decided in updateRows, shared with the sidebar's Sources badge.
   const rowsAll = useMemo(() => {
-    const demoOf = new Map<string, DemoUpdate>();
-    for (const u of demo) for (const id of [u.previousId, u.currentId]) if (id) demoOf.set(id, u);
-    const hidden = new Set(demo.map((u) => (u.status === "UPDATED" ? u.previousId : u.currentId)).filter(Boolean) as string[]);
-    return docs
-      .filter((d) => !hidden.has(d.id) && (demoOf.has(d.id) || d.familyVersions.at(-1)?.id === d.id || !d.familyVersions.length))
-      .map((d) => {
-        const u = demoOf.get(d.id) ?? null;
-        const imp = u ? null : d.pendingImport;
-        // Users see an update only once an admin has released it; until then the document reads as up to date.
-        const offer: Offer | null = u && u.status !== "UPDATED" && u.released
-          ? { key: u.key, name: `${u.family} ${versionLabel(u.family, u.current)}`, released: true }
-          : imp?.released ? { key: `doc:${d.id}`, name: `${d.short} → ${imp.version ?? d.latestCheck?.latestVersion ?? "new version"}`, released: true, docId: d.id, importId: imp.id, fromConnector: imp.fromConnector } : null;
-        // A connector found a newer version that is not in the library yet: shown as available, installable once uploaded.
-        const found = !u && !offer
-          ? [...d.updates, ...d.familyVersions.flatMap((v) => docs.find((x) => x.id === v.id)?.updates ?? [])]
-              // Only a version newer than the one shown: once installed, the same finding no longer means an update.
-              .find((x) => x.changeType === "VERSION_CHANGE" && x.reviewStatus === "NEW" && x.newValue && newerVersion(x.newValue, d.version)) ?? null
-          : null;
+    return updateRows(docs, demo)
+      .map(({ d, u, imp, offered, found, status, rejected, actionable }) => {
+        const offer: Offer | null = !offered ? null
+          : u ? { key: u.key, name: `${u.family} ${versionLabel(u.family, u.current)}`, released: true }
+          : { key: `doc:${d.id}`, name: `${d.short} → ${imp!.version ?? d.latestCheck?.latestVersion ?? "new version"}`, released: true, docId: d.id, importId: imp!.id, fromConnector: imp!.fromConnector };
         return {
-          d, u, offer, found,
-          status: (offer || found ? "AVAILABLE" : "UPDATED") as "AVAILABLE" | "UPDATED",
-          rejected: u?.status === "REJECTED",
+          d, u, offer, found: found as (typeof d.updates)[number] | null, status, rejected, actionable,
           current: versionLabel(u?.family ?? "", d.version),
           latest: found ? found.newValue : !offer ? versionLabel(u?.family ?? "", d.version) : u ? versionLabel(u.family, u.current) : imp!.version ?? d.latestCheck?.latestVersion ?? "New version",
           // The date of the version shown as "latest": from the workbook where it lists that version, else none.

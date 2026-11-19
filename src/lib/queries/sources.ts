@@ -6,6 +6,8 @@ import { MECHANISM_LABEL, type Mechanism } from "@/lib/connectors/types";
 import { applicabilityOf } from "@/lib/sources/applicability";
 import { previousVersionOf, versionOf } from "@/lib/sources/previous-versions";
 import { compareVersions, comparisonSummary } from "@/lib/sources/headings";
+import { updateRows } from "@/lib/sources/update-status";
+import { demoFrameworks, getDemoState, isReleased, statusOf } from "@/lib/demo/state";
 
 export function publisherOf(name: string) {
   const fam = deriveFamily(name);
@@ -139,8 +141,30 @@ export async function frameworkUpdates(): Promise<Map<string, FrameworkUpdate>> 
   return out;
 }
 
-/** Documents with a released update waiting for a user to click Update (the Sources badge). */
-export const releasedUpdateCount = async () => [...(await pendingImports()).values()].filter((p) => p.released).length;
+/**
+ * The Sources badge: how many rows in Sources show "Update available" and have not been declined. Same rules as the
+ * Sources page (updateRows), read with a lighter query because the layout runs it on every page.
+ */
+export async function availableUpdateCount() {
+  const [fws, pending, demoFws, state] = await Promise.all([
+    prisma.framework.findMany({
+      select: {
+        id: true, name: true, family: true, versionLabel: true,
+        connectors: { select: { updates: { orderBy: { detectedAt: "desc" }, take: 10, select: { changeType: true, reviewStatus: true, newValue: true } } } },
+      },
+    }),
+    pendingImports(), demoFrameworks(), getDemoState(),
+  ]);
+  const docs = fws.map((f) => ({
+    id: f.id,
+    version: versionOf(f),
+    familyVersions: fws.filter((x) => x.family && x.family === f.family).sort((a, b) => cmpVersion(a.versionLabel, b.versionLabel)).map((x) => ({ id: x.id })),
+    updates: f.connectors.flatMap((c) => c.updates),
+    pendingImport: pending.get(f.id) ?? null,
+  }));
+  const demo = demoFws.map((u) => ({ ...u, status: statusOf(state, u.key), released: isReleased(state, u.key) }));
+  return updateRows(docs, demo).filter((r) => r.actionable).length;
+}
 
 export async function listSources() {
   const docs = await load();

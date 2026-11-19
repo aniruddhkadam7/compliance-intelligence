@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Grid3x3, Network, Share2, Upload } from "lucide-react";
 import { EmptyState, ErrorState, Page, PageHeader } from "@/components/common";
@@ -47,7 +47,16 @@ export function MappingExplorer() {
   // Recorded (not loaded) earlier versions have no requirements, so they cannot be related.
   const all = useMemo(() => (docs.data?.items ?? []).filter((d) => d.versionStatus !== "RECORDED").sort((x, y) => x.short.localeCompare(y.short, undefined, { numeric: true })), [docs.data]);
   // Two sources can share a short name (e.g. a consolidated edition); add the source ID to tell them apart.
-  const label = (d: Doc) => (all.filter((x) => x.short === d.short).length > 1 ? `${d.short} (${d.sourceId})` : d.short);
+  // Worked out once: the matrix asks for labels thousands of times per render.
+  const labels = useMemo(() => {
+    const seen = new Map<string, number>();
+    for (const d of all) seen.set(d.short, (seen.get(d.short) ?? 0) + 1);
+    return new Map(all.map((d) => [d.id, seen.get(d.short)! > 1 ? `${d.short} (${d.sourceId})` : d.short]));
+  }, [all]);
+  const label = useCallback((d: Doc) => labels.get(d.id) ?? d.short, [labels]);
+  // Tabs stay mounted once opened (hidden when not selected), so switching back is instant and keeps its state.
+  const [opened, setOpened] = useState(() => new Set([view]));
+  if (!opened.has(view)) setOpened(new Set([...opened, view])); // adjusting state during render: no extra pass
   const counts = useMemo(() => new Map((pairs.data ?? []).flatMap((p) => [[`${p.a.id}|${p.b.id}`, p.links], [`${p.b.id}|${p.a.id}`, p.links]] as [string, number][])), [pairs.data]);
   const count = (x: string, y: string) => counts.get(`${x}|${y}`) ?? 0;
 
@@ -77,10 +86,14 @@ export function MappingExplorer() {
           </Card>
         ) : (
           <>
-            <TabsContent value="overview"><Matrix docs={all} label={label} count={count} onOpen={open} /></TabsContent>
-            <TabsContent value="graph">
+            {opened.has("overview") && (
+              <TabsContent value="overview" forceMount className="data-[state=inactive]:hidden"><Matrix docs={all} label={label} count={count} onOpen={open} /></TabsContent>
+            )}
+            {opened.has("graph") && (
+            <TabsContent value="graph" forceMount className="data-[state=inactive]:hidden">
               <RelationGraph docs={all} label={label} count={count} pairs={pairs.data} a={s.a} b={s.b} onChange={(a, b) => set({ a, b })} />
             </TabsContent>
+            )}
           </>
         )}
       </Tabs>

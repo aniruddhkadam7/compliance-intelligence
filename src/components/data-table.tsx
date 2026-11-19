@@ -46,7 +46,7 @@ export function DataTable<T>({
 
   return (
     <div className="flex min-h-0 flex-col">
-      <div className="scrollbar-thin overflow-x-auto">
+      <div className="scrollbar-thin overflow-x-auto overscroll-x-contain">
         <table className="w-full border-collapse text-left">
           <thead>
             {table.getHeaderGroups().map((hg) => (

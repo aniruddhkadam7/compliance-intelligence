@@ -38,7 +38,7 @@ export function AppShell({ user, role, badges, children }: { user: string; role:
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar user={user} role={role} onMenu={() => setMobileOpen(true)} />
-        <main className="scrollbar-thin flex-1 overflow-y-auto">{children}</main>
+        <main className="scrollbar-thin flex-1 overflow-y-auto overscroll-contain">{children}</main>
       </div>
     </div>
   );

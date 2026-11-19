@@ -13,17 +13,22 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) });
-    setBusy(false);
-    if (!res.ok) {
-      setError((await res.json().catch(() => ({}))).error ?? "Sign-in failed.");
+    setStatus("Checking your credentials…");
+    const res = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, password }) }).catch(() => null);
+    if (!res || !res.ok) {
+      setBusy(false);
+      setStatus(null);
+      setError((res && (await res.json().catch(() => ({}))).error) ?? "Sign-in failed. Check your connection and try again.");
       return;
     }
+    // Keep the spinner until navigation replaces this page, so the user sees progress.
+    setStatus("Signed in. Opening your workspace…");
     const next = params.get("next");
     router.push(next && next.startsWith("/") && !next.startsWith("//") ? next : "/");
     router.refresh();
@@ -39,10 +44,11 @@ function LoginForm() {
         <Label htmlFor="p">Password</Label>
         <Input id="p" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
-      {error && <p className="rounded-md bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
+      {error && <p role="alert" className="rounded-md bg-danger-soft px-2.5 py-1.5 text-xs text-danger">{error}</p>}
       <Button type="submit" variant="primary" size="lg" className="w-full" disabled={busy || !username || !password}>
-        {busy ? <Loader2 className="animate-spin" /> : <Lock />} Sign in
+        {busy ? <Loader2 className="animate-spin" /> : <Lock />} {busy ? "Signing in…" : "Sign in"}
       </Button>
+      {status && <p aria-live="polite" className="text-center text-xs text-muted">{status}</p>}
     </form>
   );
 }
